@@ -1,0 +1,30 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ branding.business_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        {% if branding.logo %}<img src="{{ branding.logo.url }}" alt="{{ branding.business_name }}">{% endif %}
+        <span>{{ branding.business_name }}</span>
+      </div>
+      <button class="theme-toggle" onclick="toggleNabiswaTheme()">🌓 Theme</button>
+    </header>
+    <main style="flex:1;">
+      {% block content %}{% endblock %}
+    </main>
+    <footer style="padding:16px 24px; color:var(--color-text-muted); font-size:.85rem;">
+      {{ branding.business_name }} &middot; {{ branding.support_info }}
+    </footer>
+  </div>
+  <script src="{% static 'js/theme.js' %}"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

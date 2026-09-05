@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}{{ branding.business_name }} &middot; Get Connected{% endblock %}
+{% block content %}
+<div style="text-align:center; padding:32px 16px 8px;">
+  <h1>{{ branding.business_name }}</h1>
+  <p style="color:var(--color-text-muted);">{{ branding.portal_message }}</p>
+</div>
+
+{% csrf_token %}
+<div class="grid">
+  {% for package in packages %}
+  <div class="card package-card">
+    <h3>{{ package.name }}</h3>
+    <div class="price">{{ branding.currency }} {{ package.price }}</div>
+    <p>{{ package.duration }} {{ package.get_duration_unit_display }}</p>
+    {% if package.download_speed_kbps %}<p>{{ package.download_speed_kbps }} kbps</p>{% endif %}
+    <p>{% if package.unlimited_data %}Unlimited data{% else %}{{ package.data_allowance_mb }} MB{% endif %}</p>
+    <button class="btn buy-btn" data-package-id="{{ package.id }}" data-package-name="{{ package.name }}">BUY NOW</button>
+  </div>
+  {% empty %}
+  <p>No packages available right now.</p>
+  {% endfor %}
+</div>
+
+<!-- Purchase modal: everything happens here, no page navigation (Section 9). -->
+<div id="buy-modal-overlay" class="modal-overlay" hidden>
+  <div class="modal-card">
+
+    <!-- Step 1: phone number -->
+    <div id="modal-step-phone">
+      <h3 id="modal-package-name">Buy package</h3>
+      <input type="tel" id="modal-phone-input" placeholder="07XXXXXXXX" autocomplete="tel" inputmode="numeric">
+      <p id="modal-phone-error" class="badge badge-danger" hidden></p>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" id="modal-pay-btn">Pay with M-Pesa</button>
+        <button class="btn btn-secondary" id="modal-cancel-btn">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Step 2a: sending the request — short dot-pulse, distinct from the
+         longer wait below, so it's clear something is actively happening
+         right now rather than just sitting there. -->
+    <div id="modal-step-sending" hidden style="text-align:center;">
+      <div class="dot-pulse"><span></span><span></span><span></span></div>
+      <h3>Sending payment request…</h3>
+      <p style="color:var(--color-text-muted);">Talking to M-Pesa, one moment.</p>
+    </div>
+
+    <!-- Step 2b: waiting for the customer to enter their PIN (no full-page
+         load, just this stays put) -->
+    <div id="modal-step-waiting" hidden style="text-align:center;">
+      <div class="spinner"></div>
+      <h3>Check your phone</h3>
+      <p style="color:var(--color-text-muted);">Enter your M-Pesa PIN to complete the payment.</p>
+      <p class="badge badge-warning" id="modal-status-text">Waiting for confirmation…</p>
+      <button class="btn btn-secondary" id="modal-waiting-cancel-btn">Cancel</button>
+    </div>
+
+    <!-- Step 3: result -->
+    <div id="modal-step-result" hidden style="text-align:center;">
+      <div id="modal-result-icon"></div>
+      <h3 id="modal-result-title"></h3>
+      <p id="modal-result-message" style="color:var(--color-text-muted);"></p>
+      <button class="btn" id="modal-close-btn">Done</button>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const overlay = document.getElementById('buy-modal-overlay');
+  const stepPhone = document.getElementById('modal-step-phone');
+  const stepSending = document.getElementById('modal-step-sending');
+  const stepWaiting = document.getElementById('modal-step-waiting');
+  const stepResult = document.getElementById('modal-step-result');
+  const packageNameEl = document.getElementById('modal-package-name');
+  const phoneInput = document.getElementById('modal-phone-input');
+  const phoneError = document.getElementById('modal-phone-error');
+  const statusText = document.getElementById('modal-status-text');
+  const resultIcon = document.getElementById('modal-result-icon');
+  const resultTitle = document.getElementById('modal-result-title');
+  const resultMessage = document.getElementById('modal-result-message');
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+  let currentPackageId = null;
+  let pollTimer = null;
+  const POLL_INTERVAL_MS = 2500;
+  const MAX_WAIT_MS = 90000; // give up politely after 90s, not stuck forever
+
+  function showStep(step) {
+    stepPhone.hidden = step !== 'phone';
+    stepSending.hidden = step !== 'sending';
+    stepWaiting.hidden = step !== 'waiting';
+    stepResult.hidden = step !== 'result';
+  }
+
+  // Accepts however the customer typed it — 0712345678, 0712 345 678,
+  // 0712-345-678, +254712345678, 254712345678, 712345678 — and normalizes
+  // to 2547XXXXXXXX. Mirrors apps/billing/utils.normalize_phone_number so
+  // the customer gets instant feedback, but the server re-validates
+  // regardless (this is a UX shortcut, not the source of truth).
+  function normalizePhoneNumber(raw) {
+    if (!raw) return null;
+    let digits = raw.replace(/\D/g, '');
+    if (digits.startsWith('0') && digits.length === 10) {
+      digits = '254' + digits.slice(1);
+    } else if (digits.startsWith('254') && digits.length === 12) {
+      // already correct
+    } else if (digits.length === 9 && (digits[0] === '7' || digits[0] === '1')) {
+      digits = '254' + digits;
+    } else {
+      return null;
+    }
+    return /^254[71]\d{8}$/.test(digits) ? digits : null;
+  }
+
+  function openModal(packageId, packageName) {
+    currentPackageId = packageId;
+    packageNameEl.textContent = 'Buy ' + packageName;
+    phoneInput.value = '';
+    phoneError.hidden = true;
+    showStep('phone');
+    overlay.hidden = false;
+    setTimeout(() => phoneInput.focus(), 50);
+  }
+
+  function closeModal() {
+    overlay.hidden = true;
+    if (pollTimer) clearTimeout(pollTimer);
+  }
+
+  document.querySelectorAll('.buy-btn').forEach(btn => {
+    btn.addEventListener('click', () => openModal(btn.dataset.packageId, btn.dataset.packageName));
+  });
+  document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
+  document.getElementById('modal-waiting-cancel-btn').addEventListener('click', closeModal);
+  document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+
+  document.getElementById('modal-pay-btn').addEventListener('click', async () => {
+    const normalized = normalizePhoneNumber(phoneInput.value);
+    if (!normalized) {
+      phoneError.textContent = 'Enter a valid Safaricom number, e.g. 0712345678';
+      phoneError.hidden = false;
+      return;
+    }
+    phoneError.hidden = true;
+
+    // Phase 1: actively sending the request (short dot-pulse).
+    showStep('sending');
+
+    try {
+      const res = await fetch(`/billing/buy/${currentPackageId}/`, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `phone_number=${encodeURIComponent(normalized)}`,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.payment_id) {
+        showResult(false, 'Could not start payment', data.error || 'Please try again.');
+        return;
+      }
+      // Phase 2: request sent — now waiting on the customer to enter their PIN.
+      showStep('waiting');
+      statusText.textContent = 'Waiting for confirmation…';
+      pollPaymentStatus(data.payment_id, Date.now());
+    } catch (err) {
+      showResult(false, 'Connection problem', 'Check your internet connection and try again.');
+    }
+  });
+
+  async function pollPaymentStatus(paymentId, startedAt) {
+    if (Date.now() - startedAt > MAX_WAIT_MS) {
+      showResult(false, 'Taking longer than expected', 'If you completed the M-Pesa prompt, check your dashboard shortly — otherwise, try again.');
+      return;
+    }
+    try {
+      const res = await fetch(`/billing/payment/${paymentId}/status/`);
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        showResult(true, 'Payment successful 🎉', "You're connected — enjoy your Wi-Fi.");
+      } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {
+        showResult(false, 'Payment not completed', 'The transaction was ' + data.status.toLowerCase() + '. Try again.');
+      } else {
+        pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+      }
+    } catch (err) {
+      pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+    }
+  }
+
+  function showResult(success, title, message) {
+    resultIcon.innerHTML = success
+      ? '<div class="result-icon result-success">✓</div>'
+      : '<div class="result-icon result-failure">✕</div>';
+    resultTitle.textContent = title;
+    resultMessage.textContent = message;
+    showStep('result');
+  }
+})();
+</script>
+{% endblock %}

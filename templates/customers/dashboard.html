@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid">
+  <div class="card">
+    <h3>Current Package</h3>
+    {% if active_subscription %}
+      <p>{{ active_subscription.package.name }}</p>
+      <p class="badge badge-success">Expires {{ active_subscription.expiry_time }}</p>
+    {% else %}
+      <p>No active package</p>
+      <a class="btn" href="/">Buy a package</a>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h3>Current Session</h3>
+    {% if active_session %}
+      <p>{{ active_session.ip_address|default:"—" }}</p>
+      <p class="badge badge-info">Since {{ active_session.login_time }}</p>
+    {% else %}
+      <p>Not currently connected</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h3>Devices</h3>
+    {% for d in devices %}<p>{{ d.mac_address }} — {{ d.get_device_type_display }}</p>{% empty %}<p>No devices on record</p>{% endfor %}
+  </div>
+</div>
+<div class="card" style="margin:20px;">
+  <h3>Payment History</h3>
+  <table>
+    <thead><tr><th>Date</th><th>Package</th><th>Amount</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for p in payments %}
+      <tr>
+        <td data-label="Date">{{ p.created_at|date:"d M Y H:i" }}</td>
+        <td data-label="Package">{{ p.package.name }}</td>
+        <td data-label="Amount">{{ p.amount }}</td>
+        <td data-label="Status"><span class="badge {% if p.status == 'SUCCESS' %}badge-success{% elif p.status == 'PENDING' %}badge-warning{% else %}badge-danger{% endif %}">{{ p.status }}</span></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4">No payments yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

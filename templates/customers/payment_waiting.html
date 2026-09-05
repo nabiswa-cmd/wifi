@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid" style="max-width:420px; margin:40px auto;">
+  <div class="card" style="text-align:center;">
+    <h2>Confirm on your phone</h2>
+    <p>We're waiting for confirmation of your KSh {{ payment.amount }} payment for {{ payment.package.name }}.</p>
+    <p class="badge badge-warning" id="status-badge">PENDING</p>
+    <p style="color:var(--color-text-muted); font-size:.85rem;">This page checks automatically — no need to refresh.</p>
+  </div>
+</div>
+<script>
+  const paymentId = {{ payment.id }};
+  async function poll() {
+    const res = await fetch(`/billing/payment/${paymentId}/status/`);
+    const data = await res.json();
+    const badge = document.getElementById('status-badge');
+    badge.textContent = data.status;
+    if (data.status === 'SUCCESS') {
+      window.location.href = '/payment/success/';
+    } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {
+      window.location.href = '/payment/failed/';
+    } else {
+      setTimeout(poll, 3000);
+    }
+  }
+  poll();
+</script>
+{% endblock %}

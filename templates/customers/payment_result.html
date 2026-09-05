@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid" style="max-width:420px; margin:40px auto;">
+  <div class="card" style="text-align:center;">
+    {% if success %}
+      <h2>Payment successful 🎉</h2>
+      <p class="badge badge-success">You're connected</p>
+    {% else %}
+      <h2>Payment not completed</h2>
+      <p class="badge badge-danger">Please try again</p>
+    {% endif %}
+    <p><a class="btn" href="/">Back to packages</a></p>
+  </div>
+</div>
+{% endblock %}

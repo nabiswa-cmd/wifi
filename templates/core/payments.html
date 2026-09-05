@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="padding:20px;">
+  <h2>Payments</h2>
+  <div class="grid" style="padding:0 0 20px;">
+    <div class="card"><h3>Total Revenue (filtered)</h3><p class="price">{{ branding.currency }} {{ totals.total_revenue|default:0 }}</p></div>
+    <div class="card"><h3>Successful</h3><p class="price">{{ totals.successful }}</p></div>
+    <div class="card"><h3>Failed</h3><p class="price">{{ totals.failed }}</p></div>
+    <div class="card"><h3>Pending</h3><p class="price">{{ totals.pending }}</p></div>
+  </div>
+  <form method="get" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+    <input type="text" name="phone" placeholder="Phone" value="{{ request.GET.phone }}" style="width:auto;">
+    <select name="status" style="width:auto;">
+      <option value="">All statuses</option>
+      <option value="PENDING">Pending</option>
+      <option value="SUCCESS">Success</option>
+      <option value="FAILED">Failed</option>
+      <option value="CANCELLED">Cancelled</option>
+      <option value="TIMEOUT">Timeout</option>
+      <option value="REFUNDED">Refunded</option>
+    </select>
+    <input type="date" name="date_from" value="{{ request.GET.date_from }}" style="width:auto;">
+    <input type="date" name="date_to" value="{{ request.GET.date_to }}" style="width:auto;">
+    <button class="btn" type="submit">Filter</button>
+    <button class="btn btn-secondary" type="submit" name="export" value="csv">Export CSV</button>
+  </form>
+  <div class="card">
+    <table>
+      <thead><tr><th>Customer</th><th>Phone</th><th>Amount</th><th>Package</th><th>Status</th><th>Receipt</th><th>Date</th></tr></thead>
+      <tbody>
+        {% for p in payments %}
+        <tr>
+          <td data-label="Customer">{{ p.customer.full_name }}</td>
+          <td data-label="Phone">{{ p.phone_number }}</td>
+          <td data-label="Amount">{{ p.amount }}</td>
+          <td data-label="Package">{{ p.package.name }}</td>
+          <td data-label="Status"><span class="badge {% if p.status == 'SUCCESS' %}badge-success{% elif p.status == 'PENDING' %}badge-warning{% else %}badge-danger{% endif %}">{{ p.status }}</span></td>
+          <td data-label="Receipt">{{ p.mpesa_receipt_number|default:"—" }}</td>
+          <td data-label="Date">{{ p.created_at|date:"d M Y H:i" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7">No payments found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="padding:20px;">
+  <h2>Subscriptions</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Customer</th><th>Package</th><th>Status</th><th>Source</th><th>Activated</th><th>Expires</th></tr></thead>
+      <tbody>
+        {% for s in subscriptions %}
+        <tr>
+          <td data-label="Customer">{{ s.customer.full_name }}</td>
+          <td data-label="Package">{{ s.package.name }}</td>
+          <td data-label="Status"><span class="badge {% if s.status == 'ACTIVE' %}badge-success{% elif s.status == 'PENDING' %}badge-warning{% else %}badge-danger{% endif %}">{{ s.status }}</span></td>
+          <td data-label="Source">{{ s.get_activation_source_display }}</td>
+          <td data-label="Activated">{{ s.activation_time|default:"—" }}</td>
+          <td data-label="Expires">{{ s.expiry_time|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6">No subscriptions found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Dashboard &middot; {{ branding.business_name }}{% endblock %}
+{% block content %}
+<div style="padding:20px 20px 0; display:flex; gap:12px;">
+  <a class="btn btn-secondary" href="{% url 'core:payments' %}">Payments</a>
+  <a class="btn btn-secondary" href="{% url 'core:subscriptions' %}">Subscriptions</a>
+</div>
+<div class="grid">
+  <div class="card"><h3>Total Customers</h3><p class="price">{{ total_customers }}</p></div>
+  <div class="card"><h3>Active Customers</h3><p class="price">{{ active_customers }}</p></div>
+  <div class="card"><h3>Online Users</h3><p class="price">{{ online_users }}</p></div>
+  <div class="card"><h3>Today's Revenue</h3><p class="price">{{ branding.currency }} {{ todays_revenue }}</p></div>
+  <div class="card"><h3>Today's Payments</h3><p class="price">{{ todays_payments }}</p></div>
+  <div class="card"><h3>Successful Payments</h3><p class="price">{{ successful_payments }}</p></div>
+  <div class="card"><h3>Failed Payments</h3><p class="price">{{ failed_payments }}</p></div>
+  <div class="card"><h3>Pending Payments</h3><p class="price">{{ pending_payments }}</p></div>
+  <div class="card"><h3>Active Packages</h3><p class="price">{{ active_packages }}</p></div>
+  <div class="card"><h3>Expired Customers</h3><p class="price">{{ expired_customers }}</p></div>
+  <div class="card"><h3>Today's Sessions</h3><p class="price">{{ todays_sessions }}</p></div>
+</div>
+<p style="padding:0 20px; color:var(--color-text-muted);">
+  Revenue/growth charts are added in the reporting phase (Section 23) — these cards already
+  reflect real data from the billing models.
+</p>
+{% endblock %}

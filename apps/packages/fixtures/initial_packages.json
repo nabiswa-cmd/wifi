@@ -1,0 +1,10 @@
+[
+  {"model": "packages.internetpackage", "pk": 1, "fields": {"name": "1 Hour", "price": "10.00", "duration": 1, "duration_unit": "HOURS", "unlimited_data": true, "device_limit": 1, "is_active": true, "display_order": 1}},
+  {"model": "packages.internetpackage", "pk": 2, "fields": {"name": "3 Hours", "price": "20.00", "duration": 3, "duration_unit": "HOURS", "unlimited_data": true, "device_limit": 1, "is_active": true, "display_order": 2}},
+  {"model": "packages.internetpackage", "pk": 3, "fields": {"name": "6 Hours", "price": "30.00", "duration": 6, "duration_unit": "HOURS", "unlimited_data": true, "device_limit": 1, "is_active": true, "display_order": 3}},
+  {"model": "packages.internetpackage", "pk": 4, "fields": {"name": "12 Hours", "price": "40.00", "duration": 12, "duration_unit": "HOURS", "unlimited_data": true, "device_limit": 1, "is_active": true, "display_order": 4}},
+  {"model": "packages.internetpackage", "pk": 5, "fields": {"name": "24 Hours", "price": "50.00", "duration": 24, "duration_unit": "HOURS", "unlimited_data": true, "device_limit": 2, "is_active": true, "display_order": 5}},
+  {"model": "packages.internetpackage", "pk": 6, "fields": {"name": "3 Days", "price": "120.00", "duration": 3, "duration_unit": "DAYS", "unlimited_data": true, "device_limit": 2, "is_active": true, "display_order": 6}},
+  {"model": "packages.internetpackage", "pk": 7, "fields": {"name": "7 Days", "price": "250.00", "duration": 7, "duration_unit": "DAYS", "unlimited_data": true, "device_limit": 3, "is_active": true, "is_featured": true, "display_order": 7}},
+  {"model": "packages.internetpackage", "pk": 8, "fields": {"name": "30 Days", "price": "800.00", "duration": 30, "duration_unit": "DAYS", "unlimited_data": true, "device_limit": 3, "is_active": true, "display_order": 8}}
+]
