@@ -4,11 +4,9 @@
 
   function apply(theme) {
     root.setAttribute('data-theme', theme);
-    var sun = document.getElementById('icon-sun');
-    var moon = document.getElementById('icon-moon');
-    if (sun && moon) {
-      sun.style.display = theme === 'dark' ? 'none' : 'inline-block';
-      moon.style.display = theme === 'dark' ? 'inline-block' : 'none';
+    var btn = document.getElementById('theme-toggle-btn');
+    if (btn) {
+      btn.textContent = (theme === 'dark' ? '🌙 Theme' : '☀️ Theme');
     }
   }
 

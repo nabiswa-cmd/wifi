@@ -53,18 +53,33 @@
    behavior and the element shows up before JS ever unhides it. */
 [hidden] { display: none !important; }
 
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background:
     linear-gradient(color-mix(in srgb, var(--color-bg) 82%, transparent),
                      color-mix(in srgb, var(--color-bg) 82%, transparent)),
-    url("/static/images/LOGIC.png") center center / cover fixed no-repeat;
+    url("../images/LOGIC.png") center center / cover fixed no-repeat;
   color: var(--color-text);
   transition: background-color .2s ease, color .2s ease;
+  overflow-x: hidden;
 }
 
-.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+/* Soft floating circles drift ON TOP of the background photo, behind the
+   real content — purely decorative, never intercepts clicks. */
+.bg-circles { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.bg-circle { position: absolute; border-radius: 50%; opacity: .18; transition: background-color .2s ease; }
+.bg-circle.c1 { width: 260px; height: 260px; background: var(--color-primary); top: -70px; left: -70px; animation: bgfloat1 9s ease-in-out infinite; }
+.bg-circle.c2 { width: 190px; height: 190px; background: var(--color-secondary); bottom: -50px; right: -40px; animation: bgfloat2 8s ease-in-out infinite; }
+.bg-circle.c3 { width: 140px; height: 140px; background: var(--color-accent); top: 45%; left: 6%; animation: bgfloat3 10s ease-in-out infinite; }
+.bg-circle.c4 { width: 230px; height: 230px; background: var(--color-primary-soft); top: 68%; right: 10%; animation: bgfloat1 11s ease-in-out infinite; }
+@keyframes bgfloat1 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(22px, 24px); } }
+@keyframes bgfloat2 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(-18px, -20px); } }
+@keyframes bgfloat3 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(24px, -14px); } }
+
+.app-shell { min-height: 100vh; display: flex; flex-direction: column; position: relative; z-index: 1; }
 
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -164,3 +179,23 @@ th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--co
 .result-failure { background: var(--status-danger); }
 
 
+/* Floating contact buttons — round by nature (not a "rounded corner"
+   choice), soft shadow instead of a glow. */
+.fab-stack {
+  position: fixed; right: 18px; bottom: 18px; z-index: 500;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.fab {
+  width: 52px; height: 52px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2);
+  transition: transform .15s ease;
+}
+.fab:hover { transform: translateY(-2px); }
+.fab-whatsapp { background: #25D366; }
+.fab-call { background: var(--color-primary); }
+
+@media (max-width: 480px) {
+  .fab-stack { right: 12px; bottom: 12px; }
+  .fab { width: 46px; height: 46px; }
+}

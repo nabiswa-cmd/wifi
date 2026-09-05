@@ -87,8 +87,13 @@
 
   let currentPackageId = null;
   let pollTimer = null;
+  let lastResultWasSuccess = false;
   const POLL_INTERVAL_MS = 2500;
   const MAX_WAIT_MS = 90000; // give up politely after 90s, not stuck forever
+
+  // Where to send the customer once they're connected. Swap this for your
+  // real portfolio/site URL.
+  const SUCCESS_REDIRECT_URL = 'https://software-engineers.netlify.app/';
 
   function showStep(step) {
     stepPhone.hidden = step !== 'phone';
@@ -137,7 +142,13 @@
   });
   document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
   document.getElementById('modal-waiting-cancel-btn').addEventListener('click', closeModal);
-  document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+  document.getElementById('modal-close-btn').addEventListener('click', () => {
+    if (lastResultWasSuccess) {
+      window.location.href = SUCCESS_REDIRECT_URL;
+    } else {
+      closeModal();
+    }
+  });
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
 
   document.getElementById('modal-pay-btn').addEventListener('click', async () => {
@@ -197,12 +208,17 @@
   }
 
   function showResult(success, title, message) {
+    lastResultWasSuccess = success;
     resultIcon.innerHTML = success
       ? '<div class="result-icon result-success">✓</div>'
       : '<div class="result-icon result-failure">✕</div>';
     resultTitle.textContent = title;
     resultMessage.textContent = message;
     showStep('result');
+    if (success) {
+      // Auto-redirect a few seconds after success, even if they don't click Done.
+      setTimeout(() => { window.location.href = SUCCESS_REDIRECT_URL; }, 4000);
+    }
   }
 })();
 </script>
