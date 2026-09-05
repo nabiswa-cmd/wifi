@@ -64,7 +64,22 @@ body {
   transition: background-color .2s ease, color .2s ease;
 }
 
-.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+.app-shell { min-height: 100vh; display: flex; flex-direction: column; position: relative; z-index: 1; }
+
+/* Soft floating circles drift on top of the background photo, behind the
+   real content — purely decorative, never intercepts clicks. */
+.bg-circles { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.bg-circle { position: absolute; border-radius: 50%; opacity: .18; }
+.bg-circle.c1 { width: 260px; height: 260px; background: var(--color-primary); top: -70px; left: -70px; animation: bgfloat1 9s ease-in-out infinite; }
+.bg-circle.c2 { width: 190px; height: 190px; background: var(--color-secondary); bottom: -50px; right: -40px; animation: bgfloat2 8s ease-in-out infinite; }
+.bg-circle.c3 { width: 140px; height: 140px; background: var(--color-accent); top: 45%; left: 6%; animation: bgfloat3 10s ease-in-out infinite; }
+.bg-circle.c4 { width: 230px; height: 230px; background: var(--color-primary-soft); top: 68%; right: 10%; animation: bgfloat1 11s ease-in-out infinite; }
+.bg-circle.c5 { width: 110px; height: 110px; background: var(--color-secondary-soft); top: 18%; right: 4%; animation: bgfloat2 7s ease-in-out infinite; }
+.bg-circle.c6 { width: 170px; height: 170px; background: var(--color-primary); bottom: 15%; left: 14%; animation: bgfloat3 12s ease-in-out infinite; }
+.bg-circle.c7 { width: 90px; height: 90px; background: var(--color-accent); top: 55%; left: 62%; animation: bgfloat2 9s ease-in-out infinite; }
+@keyframes bgfloat1 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(22px, 24px); } }
+@keyframes bgfloat2 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(-18px, -20px); } }
+@keyframes bgfloat3 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(24px, -14px); } }
 
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -87,6 +102,8 @@ body {
 .grid {
   display: grid; gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  max-width: 1000px;
+  margin: 0 auto;
   padding: 20px;
 }
 
@@ -159,8 +176,6 @@ th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--co
 .dot-pulse span:nth-child(3) { animation-delay: .3s; }
 @keyframes dot-pulse { 0%, 80%, 100% { transform: scale(.6); opacity: .4; } 40% { transform: scale(1); opacity: 1; } }
 
-.result-icon { width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; font-weight: 700; color: #fff; }
-.result-success { background: var(--status-success); }
-.result-failure { background: var(--status-danger); }
+
 
 
