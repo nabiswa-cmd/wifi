@@ -202,8 +202,12 @@ th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--co
   td::before { content: attr(data-label); font-weight: 600; display: block; font-size: .75rem; color: var(--color-text-muted); }
 
   .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 12px; max-width: none; }
-  .package-card { padding: 14px; }
-  .package-card .price { font-size: 1.2rem; }
+  .package-card .package-head { padding: 12px 8px 8px; }
+  .package-card .package-head h3 { font-size: .85rem; min-height: 2.1em; }
+  .package-card .package-body { padding: 12px 10px 14px; }
+  .package-card .price { font-size: 1.25rem; }
+  .package-card .validity { font-size: .72rem; }
+  .package-card .buy-btn { padding: 9px; font-size: .82rem; }
 }
 
 /* Purchase modal — this is what makes it float as a popup instead of
@@ -215,12 +219,36 @@ th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--co
   z-index: 1000; padding: 16px;
 }
 .modal-card {
-  background: var(--color-surface); border-radius: 16px; padding: 28px 24px;
+  background: rgba(255, 255, 255, .18);
+  background: color-mix(in srgb, var(--color-surface) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 45%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border-radius: 16px; padding: 28px 24px;
   max-width: 360px; width: 100%; text-align: center;
   box-shadow: 0 10px 40px rgba(0,0,0,.3);
   animation: modal-pop .18s ease-out;
 }
+[data-theme="dark"] .modal-card {
+  background: rgba(30, 24, 40, .18);
+  background: color-mix(in srgb, var(--color-surface) 18%, transparent);
+}
 @keyframes modal-pop { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* "Get connected another way" section — same frosted-glass treatment as
+   the package cards and the modal, so it doesn't look like a flat solid
+   block against the photo background. */
+#reconnect.card {
+  background: rgba(255, 255, 255, .18);
+  background: color-mix(in srgb, var(--color-surface) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 45%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+[data-theme="dark"] #reconnect.card {
+  background: rgba(30, 24, 40, .18);
+  background: color-mix(in srgb, var(--color-surface) 18%, transparent);
+}
 .modal-card h3 { margin-top: 0; }
 
 .spinner {

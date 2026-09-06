@@ -45,8 +45,40 @@
     <main style="flex:1;">
       {% block content %}{% endblock %}
     </main>
-    <footer style="padding:16px 24px; color:var(--color-text-muted); font-size:.85rem;">
-      {{ branding.business_name }} &middot; {{ branding.support_info }}
+    <footer class="site-footer">
+      <div class="footer-grid">
+
+        <div class="footer-col footer-brand">
+          {% if branding.logo %}<img src="{{ branding.logo.url }}" alt="{{ branding.business_name }}" class="footer-logo">{% endif %}
+          <h3 class="footer-brand-name">{{ branding.business_name|default:"Nabiswa Logic Wifi" }}</h3>
+          <p class="footer-tagline">Fast, reliable Wi-Fi connect in seconds, browse without limits.</p>
+        </div>
+
+        <div class="footer-col">
+          <h5 class="footer-heading">Get In Touch</h5>
+          <a href="tel:+254792390205" class="footer-link">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            Call: 0792 390 205
+          </a>
+          <a href="https://wa.me/254792390205?text=Hi%2C%20I%27d%20like%20to%20ask%20about%20your%20WiFi%20packages." target="_blank" rel="noopener" class="footer-link footer-link-whatsapp">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.372-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.876 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.288.173-1.412-.074-.124-.272-.198-.57-.347z"/><path d="M12.004 2.003c-5.514 0-9.997 4.483-9.997 9.997 0 1.762.462 3.484 1.34 4.997L2 22l5.117-1.334a9.96 9.96 0 0 0 4.887 1.278h.004c5.514 0 9.997-4.483 9.997-9.997s-4.483-9.944-10.001-9.944zm0 18.166a8.163 8.163 0 0 1-4.163-1.14l-.298-.177-3.037.792.812-2.96-.194-.305a8.147 8.147 0 0 1-1.253-4.376c0-4.505 3.665-8.17 8.173-8.17 4.507 0 8.17 3.663 8.17 8.17 0 4.508-3.663 8.166-8.21 8.166z"/></svg>
+            WhatsApp: 0792 390 205
+          </a>
+          <p class="footer-support">{{ branding.support_info }}</p>
+        </div>
+
+        <div class="footer-col">
+          <h5 class="footer-heading">Quick Links</h5>
+          <a href="#package" class="footer-link">Packages</a>
+          <a href="#reconnect" class="footer-link">Reconnect / Voucher</a>
+          <a href="tel:+254792390205" class="footer-link">Support</a>
+        </div>
+
+      </div>
+
+      <div class="footer-bottom">
+        <p>&copy; {% now "Y" %} {{ branding.business_name|default:"Nabiswa Logic Wifi" }}. All rights reserved.</p>
+      </div>
     </footer>
   </div>
   <div class="fab-stack" aria-label="Contact options">

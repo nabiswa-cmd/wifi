@@ -5,20 +5,27 @@
   <h1>{{ branding.business_name }}</h1>
   <p style="color:var(--color-text-muted);">{{ branding.portal_message }}</p>
   <p style="font-size:.85rem;">
-    Already paid, or have a voucher? <a href="#reconnect">Get connected &darr;</a>
+    Already paid, or have a voucher? <a href="#reconnect">Get connected </a>
   </p>
 </div>
 
 {% csrf_token %}
-<div class="grid">
+<div class="grid" id="package">
   {% for package in packages %}
   <div class="card package-card">
-    <h3>{{ package.name }}</h3>
-    <div class="price">{{ branding.currency }} {{ package.price }}</div>
-    <p>{{ package.duration }} {{ package.get_duration_unit_display }}</p>
-    {% if package.download_speed_kbps %}<p>{{ package.download_speed_kbps }} kbps</p>{% endif %}
-    <p>{% if package.unlimited_data %}Unlimited data{% else %}{{ package.data_allowance_mb }} MB{% endif %}</p>
-    <button class="btn buy-btn" data-package-id="{{ package.id }}" data-package-name="{{ package.name }}">BUY NOW</button>
+    <div class="package-head">
+      <h3>{{ package.name }}</h3>
+      <div class="package-dots">
+        {% for dot in "1234" %}
+        <span{% if forloop.first %} class="active"{% endif %}></span>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="package-body">
+      <div class="price">{{ branding.currency }} {{ package.price }}</div>
+      <p class="validity">Valid for {{ package.duration }} {{ package.get_duration_unit_display }}</p>
+      <button class="btn buy-btn" data-package-id="{{ package.id }}" data-package-name="{{ package.name }}">Select Plan</button>
+    </div>
   </div>
   {% empty %}
   <p>No packages available right now.</p>
@@ -237,7 +244,7 @@
       const res = await fetch(`/billing/payment/${paymentId}/status/`);
       const data = await res.json();
       if (data.status === 'SUCCESS') {
-        showResult(true, 'Payment successful 🎉', "You're connected — enjoy your Wi-Fi.");
+        showResult(true, 'Payment successful ', "You're connected enjoy your Wi-Fi.");
       } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {
         showResult(false, 'Payment not completed', 'The transaction was ' + data.status.toLowerCase() + '. Try again.');
       } else {
