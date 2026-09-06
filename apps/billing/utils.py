@@ -34,6 +34,20 @@ def normalize_phone_number(raw: str) -> str | None:
     return digits
 
 
+def extract_mpesa_code(raw: str) -> str | None:
+    """
+    Accepts either a bare M-Pesa receipt code ('SFH3JT6LKQ') or the whole
+    confirmation SMS pasted in ('SFH3JT6LKQ Confirmed. Ksh20.00 paid to...'),
+    and returns just the code. M-Pesa receipt codes are always exactly 10
+    upper-case letters/digits starting with a letter, normally right at the
+    start of the SMS.
+    """
+    if not raw:
+        return None
+    match = re.search(r'\b[A-Z][A-Z0-9]{9}\b', raw.strip().upper())
+    return match.group(0) if match else None
+
+
 def display_phone_number(normalized: str) -> str:
     """254712345678 -> 0712 345 678, for showing back to the customer."""
     if not normalized or len(normalized) != 12:

@@ -4,6 +4,9 @@
 <div style="text-align:center; padding:32px 16px 8px;">
   <h1>{{ branding.business_name }}</h1>
   <p style="color:var(--color-text-muted);">{{ branding.portal_message }}</p>
+  <p style="font-size:.85rem;">
+    Already paid but not online? <a href="{% url 'billing:reconnect' %}">Reconnect with your M-Pesa code</a>
+  </p>
 </div>
 
 {% csrf_token %}

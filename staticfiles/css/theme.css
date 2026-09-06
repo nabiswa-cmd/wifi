@@ -167,6 +167,15 @@ body {
 .package-card { display: flex; flex-direction: column; gap: 8px; }
 .package-card .price { font-size: 1.6rem; font-weight: 800; color: var(--color-primary); }
 
+/* Frosted glass: lets your background photo/circles show through while
+   keeping package text fully readable. */
+.card.package-card {
+  background: color-mix(in srgb, var(--color-surface) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
 form input, form select, form textarea,
 .modal-card input, .modal-card select, .modal-card textarea {
   width: 100%; padding: 10px 12px; border-radius: 8px;
@@ -183,6 +192,10 @@ th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--co
   tr { margin-bottom: 12px; border: 1px solid var(--color-border); border-radius: 10px; padding: 8px; }
   td { border: none; padding: 6px 8px; }
   td::before { content: attr(data-label); font-weight: 600; display: block; font-size: .75rem; color: var(--color-text-muted); }
+
+  .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 12px; max-width: none; }
+  .package-card { padding: 14px; }
+  .package-card .price { font-size: 1.2rem; }
 }
 
 /* Purchase modal — this is what makes it float as a popup instead of
@@ -259,5 +272,29 @@ th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--co
 
 @media (max-width: 480px) {
   .fab-stack { right: 12px; bottom: 12px; }
+  .fab { width: 46px; height: 46px; }
+}
+
+
+.fab-stack {
+  position: fixed; right: 18px; bottom: 90px; z-index: 500;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.fab {
+  width: 52px; height: 52px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.2);
+  animation: fabFloat 3s ease-in-out infinite;
+}
+.fab:hover { animation-play-state: paused; transform: translateY(-3px); }
+.fab-whatsapp { background: #25D366; }
+.fab-call { background: var(--color-primary); animation-delay: .4s; }
+@keyframes fabFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@media (max-width: 480px) {
+  .fab-stack { right: 12px; bottom: 80px; }
   .fab { width: 46px; height: 46px; }
 }
