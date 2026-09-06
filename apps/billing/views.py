@@ -158,7 +158,13 @@ def reconnect_by_code(request):
         .select_related('customer', 'package', 'subscription')
         .first()
     )
-    if not payment or not payment.subscription:
+    # payment.subscription is a *reverse* one-to-one accessor — if no
+    # Subscription row was ever created for this payment, touching the
+    # attribute directly raises RelatedObjectDoesNotExist instead of
+    # returning None. hasattr() is safe here because Django deliberately
+    # makes that exception also an AttributeError, so hasattr correctly
+    # reports False rather than letting it bubble up as a 500.
+    if not payment or not hasattr(payment, 'subscription'):
         messages.error(request, "We couldn't find a completed payment with that code. Double-check it and try again.")
         return redirect(back)
 
