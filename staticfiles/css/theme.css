@@ -176,8 +176,8 @@ body {
   background: rgba(255, 255, 255, .38);
   background: color-mix(in srgb, var(--color-surface) 38%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
 }
 [data-theme="dark"] .card.package-card {
   background: rgba(30, 24, 40, .38);

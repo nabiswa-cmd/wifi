@@ -84,27 +84,26 @@
   <div style="margin-bottom:24px;">
     <h3 style="font-size:1rem;margin-bottom:4px;">Already paid via M-Pesa?</h3>
     <p style="color:var(--color-text-muted);font-size:.85rem;margin-top:0;">
-      Paste your M-Pesa code or the whole confirmation message.
+      Paste your M-Pesa code or the whole Mpesa message.
     </p>
     <form method="post" action="{% url 'billing:reconnect' %}">
       {% csrf_token %}
-      <input type="text" name="code" placeholder="e.g. SFH3JT6LKQ or paste the whole SMS" required>
-      <button type="submit" class="btn">Reconnect me</button>
+      <input type="text" name="code" placeholder="e.g. UFH3JT6LKQ or paste the whole SMS" required>
+      <button type="submit" class="btn">Reconnect</button>
     </form>
   </div>
 
-  <div style="border-top:1px solid var(--color-border); margin:20px 0;"></div>
 
   <div>
     <h3 style="font-size:1rem;margin-bottom:4px;">Have a voucher code?</h3>
     <p style="color:var(--color-text-muted);font-size:.85rem;margin-top:0;">
-      Enter the code you were given, plus your phone number.
+      Enter the code and  your phone number.
     </p>
     <form method="post" action="{% url 'vouchers:redeem' %}">
       {% csrf_token %}
       <input type="text" name="voucher_code" placeholder="Voucher code" required>
       <input type="tel" name="voucher_phone" placeholder="0712345678" required>
-      <button type="submit" class="btn">Connect me</button>
+      <button type="submit" class="btn">Connect</button>
     </form>
   </div>
 </section>
