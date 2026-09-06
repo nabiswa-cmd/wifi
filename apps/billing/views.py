@@ -129,7 +129,7 @@ def _parse_transaction_date(value):
 def reconnect_by_code(request):
     """
     Self-service recovery: a customer whose payment succeeded but whose
-    device never got connected (or who wants to switch devices) pastes
+    device never got connected (or who wants to switch devices) pastest
     their M-Pesa code here instead of paying again.
 
     Lives as a section at the bottom of the landing page (see
