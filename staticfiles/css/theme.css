@@ -54,43 +54,23 @@ html { scroll-behavior: smooth; }
    behavior and the element shows up before JS ever unhides it. */
 [hidden] { display: none !important; }
 
-[hidden] { display: none !important; }
-
 body {
   margin: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background:
     linear-gradient(color-mix(in srgb, var(--color-bg) 82%, transparent),
                      color-mix(in srgb, var(--color-bg) 82%, transparent)),
-    url("../images/LOGIC.png") center center / cover fixed no-repeat;
+    url("/static/images/LOGIC.png") center center / cover fixed no-repeat;
   color: var(--color-text);
   transition: background-color .2s ease, color .2s ease;
-  overflow-x: hidden;
 }
-
-/* Soft floating circles drift ON TOP of the background photo, behind the
-   real content — purely decorative, never intercepts clicks. */
-.bg-circles { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-.bg-circle { position: absolute; border-radius: 50%; opacity: .18; transition: background-color .2s ease; }
-.bg-circle.c1 { width: 260px; height: 260px; background: var(--color-primary); top: -70px; left: -70px; animation: bgfloat1 9s ease-in-out infinite; }
-.bg-circle.c2 { width: 190px; height: 190px; background: var(--color-secondary); bottom: -50px; right: -40px; animation: bgfloat2 8s ease-in-out infinite; }
-.bg-circle.c3 { width: 140px; height: 140px; background: var(--color-accent); top: 45%; left: 6%; animation: bgfloat3 10s ease-in-out infinite; }
-.bg-circle.c4 { width: 230px; height: 230px; background: var(--color-primary-soft); top: 68%; right: 10%; animation: bgfloat1 11s ease-in-out infinite; }
-.bg-circle.c5 { width: 110px; height: 110px; background: var(--color-secondary-soft); top: 18%; right: 4%; animation: bgfloat2 7s ease-in-out infinite; }
-.bg-circle.c6 { width: 170px; height: 170px; background: var(--color-primary); bottom: 15%; left: 14%; animation: bgfloat3 12s ease-in-out infinite; }
-.bg-circle.c7 { width: 90px; height: 90px; background: var(--color-accent); top: 55%; left: 62%; animation: bgfloat2 9s ease-in-out infinite; }
-@keyframes bgfloat1 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(22px, 24px); } }
-@keyframes bgfloat2 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(-18px, -20px); } }
-@keyframes bgfloat3 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(24px, -14px); } }
 
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; position: relative; z-index: 1; }
 
-/* Soft, blurred floating circles drift behind the real content — the
-   blur keeps them feeling like ambient light rather than sharp shapes,
-   while cards/text on top stay perfectly crisp since blur only applies
-   to this layer. */
-.bg-circles { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; filter: blur(40px); }
-.bg-circle { position: absolute; border-radius: 50%; opacity: .35; }
+/* Soft floating circles drift on top of the background photo, behind the
+   real content — purely decorative, never intercepts clicks. */
+.bg-circles { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.bg-circle { position: absolute; border-radius: 50%; opacity: .18; }
 .bg-circle.c1 { width: 260px; height: 260px; background: var(--color-primary); top: -70px; left: -70px; animation: bgfloat1 9s ease-in-out infinite; }
 .bg-circle.c2 { width: 190px; height: 190px; background: var(--color-secondary); bottom: -50px; right: -40px; animation: bgfloat2 8s ease-in-out infinite; }
 .bg-circle.c3 { width: 140px; height: 140px; background: var(--color-accent); top: 45%; left: 6%; animation: bgfloat3 10s ease-in-out infinite; }
@@ -101,27 +81,6 @@ body {
 @keyframes bgfloat1 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(22px, 24px); } }
 @keyframes bgfloat2 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(-18px, -20px); } }
 @keyframes bgfloat3 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(24px, -14px); } }
-
-/* Floating WhatsApp/Call buttons — fixed to the viewport, so they stay
-   in place (bottom-right corner) even while the page scrolls. */
-.fab-stack {
-  position: fixed; right: 18px; bottom: 18px; z-index: 500;
-  display: flex; flex-direction: column; gap: 12px;
-}
-.fab {
-  width: 52px; height: 52px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2);
-  transition: transform .15s ease;
-}
-.fab:hover { transform: translateY(-2px); }
-.fab-whatsapp { background: #25D366; }
-.fab-call { background: var(--color-primary); }
-
-@media (max-width: 480px) {
-  .fab-stack { right: 12px; bottom: 12px; }
-  .fab { width: 46px; height: 46px; }
-}
 
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -165,23 +124,48 @@ body {
 .btn:hover { transform: translateY(-1px); }
 .btn-secondary { background: var(--color-surface-alt); color: var(--color-text); border: 1px solid var(--color-border); }
 
-.package-card { display: flex; flex-direction: column; gap: 8px; }
-.package-card .price { font-size: 1.6rem; font-weight: 800; color: var(--color-primary); }
+/* Compact package card — a small teal "header strip" (name + dot
+   indicators) sits on top, then a short body with just the price and
+   validity, then a full-width pill button. Keeping the body to 2 lines
+   of text is what lets 4-6 cards fit on a small screen without scrolling
+   past every single one. */
+.package-card {
+  display: flex; flex-direction: column; gap: 0;
+  padding: 0; overflow: hidden; text-align: center;
+}
+.package-card .package-head {
+  background: color-mix(in srgb, var(--color-primary) 22%, var(--color-surface-alt));
+  padding: 14px 10px 10px;
+}
+.package-card .package-head h3 {
+  margin: 0; font-size: .95rem; font-weight: 700; line-height: 1.2;
+  min-height: 2.3em; display: flex; align-items: center; justify-content: center;
+}
+.package-card .package-dots { display: flex; justify-content: center; gap: 5px; margin-top: 8px; }
+.package-card .package-dots span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: color-mix(in srgb, var(--color-text) 25%, transparent);
+}
+.package-card .package-dots span.active { background: var(--color-primary); }
+.package-card .package-body { padding: 14px 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+.package-card .price { font-size: 1.5rem; font-weight: 800; color: var(--color-primary); margin: 0; }
+.package-card .validity { margin: 0 0 10px; font-size: .8rem; color: var(--color-text-muted); }
+.package-card .buy-btn { width: 100%; padding: 10px; border-radius: 8px; font-size: .9rem; }
 
 /* Frosted glass: lets your background photo/circles show through while
    keeping package text fully readable. The plain rgba() line is a
    fallback for browsers that don't support color-mix() — declared first
    so the color-mix() line below overrides it wherever it's supported. */
 .card.package-card {
-  background: rgba(255, 255, 255, .38);
-  background: color-mix(in srgb, var(--color-surface) 38%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  backdrop-filter: blur(0px);
-  -webkit-backdrop-filter: blur(0px);
+  background: rgba(255, 255, 255, .18);
+  background: color-mix(in srgb, var(--color-surface) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 45%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 [data-theme="dark"] .card.package-card {
-  background: rgba(30, 24, 40, .38);
-  background: color-mix(in srgb, var(--color-surface) 38%, transparent);
+  background: rgba(30, 24, 40, .18);
+  background: color-mix(in srgb, var(--color-surface) 18%, transparent);
 }
 
 form input, form select, form textarea,
@@ -270,48 +254,6 @@ th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--co
 .result-success { background: var(--status-success); }
 .result-failure { background: var(--status-danger); }
 
-
-/* Floating contact buttons — round by nature (not a "rounded corner"
-   choice), soft shadow instead of a glow. */
-.fab-stack {
-  position: fixed; right: 18px; bottom: 18px; z-index: 500;
-  display: flex; flex-direction: column; gap: 12px;
-}
-.fab {
-  width: 52px; height: 52px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2);
-  transition: transform .15s ease;
-}
-.fab:hover { transform: translateY(-2px); }
-.fab-whatsapp { background: #25D366; }
-.fab-call { background: var(--color-primary); }
-
-@media (max-width: 480px) {
-  .fab-stack { right: 12px; bottom: 12px; }
-  .fab { width: 46px; height: 46px; }
-}
-
-.fab-stack {
-  position: fixed; right: 18px; bottom: 18px; z-index: 500;
-  display: flex; flex-direction: column; gap: 12px;
-}
-.fab {
-  width: 52px; height: 52px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2);
-  transition: transform .15s ease;
-}
-.fab:hover { transform: translateY(-2px); }
-.fab-whatsapp { background: #25D366; }
-.fab-call { background: var(--color-primary); }
-
-@media (max-width: 480px) {
-  .fab-stack { right: 12px; bottom: 12px; }
-  .fab { width: 46px; height: 46px; }
-}
-
-
 .fab-stack {
   position: fixed; right: 18px; bottom: 90px; z-index: 500;
   display: flex; flex-direction: column; gap: 14px;
@@ -334,3 +276,57 @@ th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--co
   .fab-stack { right: 12px; bottom: 80px; }
   .fab { width: 46px; height: 46px; }
 }
+/* Footer — same frosted-glass language as the package cards, so it
+   doesn't sit as a flat block against the photo background. */
+.site-footer {
+  margin-top: 40px;
+  padding: 40px 24px 20px;
+  background: rgba(255, 255, 255, .12);
+  background: color-mix(in srgb, var(--color-surface) 12%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 45%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+[data-theme="dark"] .site-footer {
+  background: rgba(30, 24, 40, .12);
+  background: color-mix(in srgb, var(--color-surface) 12%, transparent);
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap: 28px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.footer-logo { height: 36px; margin-bottom: 8px; }
+.footer-brand-name { margin: 0 0 6px; font-size: 1.05rem; font-weight: 800; color: var(--color-text); }
+.footer-tagline { margin: 0; font-size: .82rem; color: var(--color-text-muted); line-height: 1.5; }
+
+.footer-heading {
+  margin: 0 0 12px; font-size: .78rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em; color: var(--color-primary);
+}
+.footer-link {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--color-text); text-decoration: none;
+  font-size: .85rem; margin-bottom: 10px; transition: color .15s, transform .15s;
+}
+.footer-link:hover { color: var(--color-primary); transform: translateX(3px); }
+.footer-link-whatsapp:hover { color: #25D366; }
+.footer-support { margin: 6px 0 0; font-size: .78rem; color: var(--color-text-muted); }
+
+.footer-bottom {
+  max-width: 1000px; margin: 28px auto 0;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 45%, transparent);
+  text-align: center;
+}
+.footer-bottom p { margin: 0; font-size: .78rem; color: var(--color-text-muted); }
+
+@media (max-width: 640px) {
+  .footer-grid { grid-template-columns: 1fr; gap: 24px; text-align: center; }
+  .footer-link { justify-content: center; }
+  .site-footer { padding: 32px 16px 16px; }
+}
+
