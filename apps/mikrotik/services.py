@@ -126,6 +126,82 @@ class NullMikroTikBackend(MikroTikBackend):
         raise MikroTikConnectionError('MikroTik not connected.')
 
 
+def connect_customer_device(request, customer, subscription):
+    """
+    The one place 'get this customer's current device online, and kick off
+    whichever device was using this subscription before' lives — shared by
+    every way a customer can get connected (M-Pesa reconnect, vouchers,
+    and eventually manual/login accounts), so the one-payment-one-device
+    rule is enforced identically no matter which door they came through.
+
+    Returns a warning string if the router couldn't be reached (never
+    pretends success it can't back up — Section 36), or None if clean.
+    """
+    from django.utils import timezone
+    from .models import InternetSession, MikroTikRouter
+
+    if not subscription.mikrotik_username:
+        subscription.mikrotik_username = f'sub{subscription.id}'
+        subscription.save(update_fields=['mikrotik_username', 'updated_at'])
+
+    mac_address = request.GET.get('mac') or request.POST.get('mac') or ''
+    ip_address = (
+        request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+        or request.META.get('REMOTE_ADDR')
+    )
+    router = MikroTikRouter.objects.filter(is_active=True).first()
+    warning = None
+
+    previous_session = (
+        InternetSession.objects
+        .filter(subscription=subscription, status=InternetSession.Status.ACTIVE)
+        .exclude(mac_address=mac_address)
+        .first()
+    )
+    if previous_session:
+        if previous_session.router:
+            try:
+                get_mikrotik_service(previous_session.router).disconnect_user(
+                    previous_session.mikrotik_username
+                )
+            except MikroTikConnectionError:
+                warning = ("Your old device couldn't be reached to disconnect it "
+                           "automatically — it may still show as online until it "
+                           "times out on its own.")
+        previous_session.status = InternetSession.Status.CLOSED
+        previous_session.logout_time = timezone.now()
+        previous_session.save(update_fields=['status', 'logout_time'])
+
+    InternetSession.objects.update_or_create(
+        subscription=subscription, mac_address=mac_address,
+        defaults={
+            'customer': customer,
+            'router': router,
+            'ip_address': ip_address,
+            'status': InternetSession.Status.ACTIVE,
+            'login_time': timezone.now(),
+            'mikrotik_username': subscription.mikrotik_username,
+        },
+    )
+
+    if router:
+        try:
+            get_mikrotik_service(router).create_user(
+                username=subscription.mikrotik_username,
+                password=subscription.mikrotik_username,
+                profile_name=subscription.package.name,
+            )
+        except MikroTikConnectionError:
+            warning = ("Your account is valid and your time is reserved, but we "
+                       "couldn't reach the router to get you online just now. "
+                       "Try again in a minute, or contact support.")
+    else:
+        warning = ("Your account is valid and your time is reserved, but no router "
+                   "is configured yet, so we can't get you online automatically.")
+
+    return warning
+
+
 def get_mikrotik_service(router) -> MikroTikBackend:
     """
     Factory the rest of the app calls. Today this always returns the null

@@ -157,3 +157,44 @@ class Subscription(models.Model):
         customer.package_expiry = new_sub.expiry_time
         customer.save(update_fields=['current_package', 'package_expiry', 'updated_at'])
         return new_sub
+
+    @classmethod
+    def activate_from_voucher(cls, customer, package, voucher):
+        """
+        Same renewal semantics as activate_from_payment (Section 12), for
+        a voucher code instead of an M-Pesa payment — kept as a sibling
+        method rather than overloading activate_from_payment's signature.
+        """
+        from apps.core.models import SystemSettings
+
+        now = timezone.now()
+        behavior = SystemSettings.load().renewal_behavior
+        duration = package.duration_as_timedelta()
+
+        existing = cls.objects.filter(
+            customer=customer, status=cls.Status.ACTIVE, expiry_time__gt=now
+        ).order_by('-expiry_time').first()
+
+        if existing and behavior == 'EXTEND':
+            existing.expiry_time = existing.expiry_time + duration
+            existing.save(update_fields=['expiry_time', 'updated_at'])
+            new_sub = existing
+        elif existing and behavior == 'QUEUE':
+            new_sub = cls.objects.create(
+                customer=customer, package=package, voucher=voucher,
+                activation_source=cls.ActivationSource.VOUCHER, status=cls.Status.PENDING,
+            )
+        else:
+            if existing:
+                existing.status = cls.Status.CANCELLED
+                existing.save(update_fields=['status', 'updated_at'])
+            new_sub = cls.objects.create(
+                customer=customer, package=package, voucher=voucher,
+                activation_source=cls.ActivationSource.VOUCHER,
+                activation_time=now, expiry_time=now + duration, status=cls.Status.ACTIVE,
+            )
+
+        customer.current_package = package
+        customer.package_expiry = new_sub.expiry_time
+        customer.save(update_fields=['current_package', 'package_expiry', 'updated_at'])
+        return new_sub
