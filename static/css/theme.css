@@ -46,6 +46,7 @@
 }
 
 * { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 
 /* Make the native `hidden` attribute win even when a class on the same
    element (e.g. .modal-overlay, .badge) sets its own `display` value —
@@ -127,12 +128,19 @@ body {
 .package-card .price { font-size: 1.6rem; font-weight: 800; color: var(--color-primary); }
 
 /* Frosted glass: lets your background photo/circles show through while
-   keeping package text fully readable. */
+   keeping package text fully readable. The plain rgba() line is a
+   fallback for browsers that don't support color-mix() — declared first
+   so the color-mix() line below overrides it wherever it's supported. */
 .card.package-card {
-  background: color-mix(in srgb, var(--color-surface) 68%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, .38);
+  background: color-mix(in srgb, var(--color-surface) 38%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+[data-theme="dark"] .card.package-card {
+  background: rgba(30, 24, 40, .38);
+  background: color-mix(in srgb, var(--color-surface) 38%, transparent);
 }
 
 form input, form select, form textarea,

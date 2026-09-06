@@ -19,6 +19,9 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from django.contrib import messages
+from django.urls import reverse
+
 from apps.customers.models import Customer
 from apps.packages.models import InternetPackage
 from apps.mikrotik.models import InternetSession, MikroTikRouter
@@ -118,14 +121,24 @@ def payment_status(request, payment_id):
         'receipt': payment.mpesa_receipt_number,
     })
 
-
+def _parse_transaction_date(value):
+    """Daraja sends TransactionDate as an int like 20240521123456."""
+    try:
+        return timezone.make_aware(datetime.datetime.strptime(str(value), '%Y%m%d%H%M%S'))
+    except (ValueError, TypeError):
+        return timezone.now()
 def reconnect_by_code(request):
     """
     Self-service recovery: a customer whose payment succeeded but whose
     device never got connected (or who wants to switch devices) pastes
     their M-Pesa code here instead of paying again.
 
-    This never re-verifies the payment with Safaricom — it trusts our own
+    This lives as a section at the bottom of the landing page (see
+    customers/landing.html#reconnect) rather than its own page — this view
+    only ever needs to handle the POST and bounce straight back there with
+    a flash message.
+
+    Never re-verifies the payment with Safaricom — it trusts our own
     Payment record, which was itself only ever marked SUCCESS by a real
     Daraja callback (see mpesa_callback below). Quoting a genuine code
     from your own SMS is, by definition, proof you paid.
@@ -134,112 +147,96 @@ def reconnect_by_code(request):
     immediately disconnects whichever device was previously using this
     subscription's session.
     """
-    context = {}
+    back = reverse('customers:landing') + '#reconnect'
 
-    if request.method == 'POST':
-        code = extract_mpesa_code(request.POST.get('code', ''))
-        if not code:
-            context['error'] = ("That doesn't look like an M-Pesa code — paste the code "
+    if request.method != 'POST':
+        return redirect(back)
+
+    code = extract_mpesa_code(request.POST.get('code', ''))
+    if not code:
+        messages.error(request, "That doesn't look like an M-Pesa code — paste the code "
                                  "(e.g. SFH3JT6LKQ) or the whole confirmation message.")
-            return render(request, 'customers/reconnect.html', context)
+        return redirect(back)
 
-        payment = (
-            Payment.objects
-            .filter(mpesa_receipt_number__iexact=code, status=Payment.Status.SUCCESS)
-            .select_related('customer', 'package', 'subscription')
-            .first()
-        )
-        if not payment or not payment.subscription:
-            context['error'] = "We couldn't find a completed payment with that code. Double-check it and try again."
-            return render(request, 'customers/reconnect.html', context)
+    payment = (
+        Payment.objects
+        .filter(mpesa_receipt_number__iexact=code, status=Payment.Status.SUCCESS)
+        .select_related('customer', 'package', 'subscription')
+        .first()
+    )
+    if not payment or not payment.subscription:
+        messages.error(request, "We couldn't find a completed payment with that code. Double-check it and try again.")
+        return redirect(back)
 
-        subscription = payment.subscription
-        if not subscription.is_currently_entitled():
-            context['error'] = "This code's session has expired — that package's time has run out."
-            return render(request, 'customers/reconnect.html', context)
+    subscription = payment.subscription
+    if not subscription.is_currently_entitled():
+        messages.error(request, "This code's session has expired — that package's time has run out.")
+        return redirect(back)
 
-        if not subscription.mikrotik_username:
-            subscription.mikrotik_username = f'sub{subscription.id}'
-            subscription.save(update_fields=['mikrotik_username', 'updated_at'])
+    if not subscription.mikrotik_username:
+        subscription.mikrotik_username = f'sub{subscription.id}'
+        subscription.save(update_fields=['mikrotik_username', 'updated_at'])
 
-        # When this page is reached through the router's HotSpot walled-garden
-        # redirect, MikroTik appends the device's real MAC address as a query
-        # parameter — that's the value we want, since it's what actually
-        # identifies "one device" on the network (an IP alone isn't reliable
-        # enough for this rule).
-        mac_address = request.GET.get('mac') or request.POST.get('mac') or ''
-        ip_address = (
-            request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
-            or request.META.get('REMOTE_ADDR')
-        )
-        router = MikroTikRouter.objects.filter(is_active=True).first()
-        router_warning = None
+    mac_address = request.GET.get('mac') or request.POST.get('mac') or ''
+    ip_address = (
+        request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+        or request.META.get('REMOTE_ADDR')
+    )
+    router = MikroTikRouter.objects.filter(is_active=True).first()
 
-        previous_session = (
-            InternetSession.objects
-            .filter(subscription=subscription, status=InternetSession.Status.ACTIVE)
-            .exclude(mac_address=mac_address)
-            .first()
-        )
-        if previous_session:
-            if previous_session.router:
-                try:
-                    get_mikrotik_service(previous_session.router).disconnect_user(
-                        previous_session.mikrotik_username
-                    )
-                except MikroTikConnectionError as exc:
-                    logger.warning('Could not disconnect previous device for subscription %s: %s',
-                                   subscription.id, exc)
-                    router_warning = ("Your old device couldn't be reached to disconnect it "
-                                       "automatically — it may still show as online until it "
-                                       "times out on its own.")
-            previous_session.status = InternetSession.Status.CLOSED
-            previous_session.logout_time = timezone.now()
-            previous_session.save(update_fields=['status', 'logout_time'])
-
-        InternetSession.objects.update_or_create(
-            subscription=subscription, mac_address=mac_address,
-            defaults={
-                'customer': payment.customer,
-                'router': router,
-                'ip_address': ip_address,
-                'status': InternetSession.Status.ACTIVE,
-                'login_time': timezone.now(),
-                'mikrotik_username': subscription.mikrotik_username,
-            },
-        )
-
-        if router:
+    previous_session = (
+        InternetSession.objects
+        .filter(subscription=subscription, status=InternetSession.Status.ACTIVE)
+        .exclude(mac_address=mac_address)
+        .first()
+    )
+    if previous_session:
+        if previous_session.router:
             try:
-                get_mikrotik_service(router).create_user(
-                    username=subscription.mikrotik_username,
-                    password=code,
-                    profile_name=payment.package.name,
+                get_mikrotik_service(previous_session.router).disconnect_user(
+                    previous_session.mikrotik_username
                 )
             except MikroTikConnectionError as exc:
-                logger.warning('Could not (re)connect device for subscription %s: %s', subscription.id, exc)
-                router_warning = ("Your payment is valid and your time is reserved, but we "
-                                   "couldn't reach the router to get you online just now. "
-                                   "Try again in a minute, or contact support.")
-        else:
-            router_warning = ("Your payment is valid and your time is reserved, but no router "
-                               "is configured yet, so we can't get you online automatically.")
+                logger.warning('Could not disconnect previous device for subscription %s: %s',
+                               subscription.id, exc)
+                messages.warning(request, "Your old device couldn't be reached to disconnect it "
+                                           "automatically — it may still show as online until it "
+                                           "times out on its own.")
+        previous_session.status = InternetSession.Status.CLOSED
+        previous_session.logout_time = timezone.now()
+        previous_session.save(update_fields=['status', 'logout_time'])
 
-        context['success'] = True
-        context['package_name'] = payment.package.name
-        context['expiry_time'] = subscription.expiry_time
-        context['router_warning'] = router_warning
+    InternetSession.objects.update_or_create(
+        subscription=subscription, mac_address=mac_address,
+        defaults={
+            'customer': payment.customer,
+            'router': router,
+            'ip_address': ip_address,
+            'status': InternetSession.Status.ACTIVE,
+            'login_time': timezone.now(),
+            'mikrotik_username': subscription.mikrotik_username,
+        },
+    )
 
-    return render(request, 'customers/reconnect.html', context)
+    if router:
+        try:
+            get_mikrotik_service(router).create_user(
+                username=subscription.mikrotik_username,
+                password=code,
+                profile_name=payment.package.name,
+            )
+        except MikroTikConnectionError as exc:
+            logger.warning('Could not (re)connect device for subscription %s: %s', subscription.id, exc)
+            messages.warning(request, "Your payment is valid and your time is reserved, but we "
+                                       "couldn't reach the router to get you online just now. "
+                                       "Try again in a minute, or contact support.")
+    else:
+        messages.warning(request, "Your payment is valid and your time is reserved, but no router "
+                                   "is configured yet, so we can't get you online automatically.")
 
-
-def _parse_transaction_date(value):
-    """Daraja sends TransactionDate as an int like 20240521123456."""
-    try:
-        return timezone.make_aware(datetime.datetime.strptime(str(value), '%Y%m%d%H%M%S'))
-    except (ValueError, TypeError):
-        return timezone.now()
-
+    messages.success(request, f"Reconnected — your {payment.package.name} package is active "
+                               f"until {subscription.expiry_time:%d %b, %H:%M}.")
+    return redirect(back)
 
 @csrf_exempt
 @require_POST
