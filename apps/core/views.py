@@ -31,7 +31,7 @@ def _staff_required(user):
 def dashboard(request):
     """
     Section 20's KPI dashboard, now backed by real queries against billing
-    and customer data (Phase 2). Charts are left to Phase 5/reporting   
+    and customer data (Phase 2). Charts are left to Phase 5/reporting —
     the numeric cards are the load-bearing part for day-to-day ops.
     """
     from apps.customers.models import Customer

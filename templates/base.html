@@ -4,8 +4,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}{{ branding.business_name }}{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'css/theme.css' %}?v=3">
+    <title>{% block title %}{{ branding.business_name }}{% endblock %}</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inria+Serif:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Jost:ital,wght@0,100..900;1,100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css?family=Tangerine" rel="stylesheet">
+
+  <link rel="stylesheet" href="{% static 'css/theme.css' %}?v=5">
   {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -22,7 +29,7 @@
     <header class="topbar">
       <div class="brand">
         {% if branding.logo %}<img src="{{ branding.logo.url }}" alt="{{ branding.business_name }}">{% endif %}
-        <span>{{ branding.business_name }}</span>
+        <span style="font-family:'Tangerine',cursive; font-size:1.7rem; line-height:1;">{{ branding.business_name }}</span>
       </div>
       <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleNabiswaTheme()" title="Toggle theme" aria-label="Toggle light and dark theme">
   <svg id="icon-sun" class="theme-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -50,7 +57,7 @@
 
         <div class="footer-col footer-brand">
           {% if branding.logo %}<img src="{{ branding.logo.url }}" alt="{{ branding.business_name }}" class="footer-logo">{% endif %}
-          <h3 class="footer-brand-name">{{ branding.business_name|default:"Nabiswa Logic Wifi" }}</h3>
+          <h3 class="footer-brand-name" style="font-family:'Tangerine',cursive; font-size:1.7rem; line-height:1;">{{ branding.business_name|default:"Nabiswa Logic Wifi" }}</h3>
           <p class="footer-tagline">Fast, reliable Wi-Fi connect in seconds, browse without limits.</p>
         </div>
 

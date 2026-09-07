@@ -10,7 +10,7 @@ class DeviceSerializer(serializers.ModelSerializer):
 
 
 class CustomerSelfSerializer(serializers.ModelSerializer):
-    """What a logged-in customer sees about themselves (Section 27)    no
+    """What a logged-in customer sees about themselves (Section 27) — no
     staff-only fields like `notes`."""
     devices = DeviceSerializer(many=True, read_only=True)
     current_package_name = serializers.CharField(source='current_package.name', read_only=True)
