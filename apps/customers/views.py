@@ -32,7 +32,7 @@ def customer_login(request):
 def customer_dashboard(request):
     """
     Section 27: current package, remaining time, session, devices, payment
-    history — all read from the billing models, never inferred client-side.
+    history    all read from the billing models, never inferred client-side.
     """
     customer = getattr(request.user, 'customer_profile', None)
     context = {'customer': customer}

@@ -5,7 +5,7 @@ from .serializers import PaymentSerializer, SubscriptionSerializer
 
 
 class PaymentViewSet(viewsets.ReadOnlyModelViewSet):
-    """Section 21: staff-only, read-only — payments are only ever mutated by
+    """Section 21: staff-only, read-only    payments are only ever mutated by
     the (Phase 3) Daraja callback handler, never through this API."""
     serializer_class = PaymentSerializer
     permission_classes = [HasRolePermission]
@@ -30,7 +30,7 @@ class PaymentViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class SubscriptionViewSet(viewsets.ReadOnlyModelViewSet):
-    """Section 22: history is never overwritten — renew/extend/suspend all
+    """Section 22: history is never overwritten    renew/extend/suspend all
     create or update rows through Subscription.activate_from_payment() or
     the (future) staff manual-action endpoints, not raw PATCH here."""
     serializer_class = SubscriptionSerializer

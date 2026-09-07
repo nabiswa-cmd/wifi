@@ -26,7 +26,7 @@ class Customer(models.Model):
     registration_date = models.DateTimeField(auto_now_add=True)
     last_login_at = models.DateTimeField(blank=True, null=True)
 
-    # Denormalized convenience pointers — the source of truth is billing.Subscription;
+    # Denormalized convenience pointers    the source of truth is billing.Subscription;
     # these two fields are kept in sync by the billing engine so simple list/detail
     # pages don't need a join for the common case.
     current_package = models.ForeignKey(

@@ -5,13 +5,13 @@
   <h2 style="margin-top:0;">Already paid? Reconnect</h2>
   <p style="color:var(--color-text-muted);font-size:.9rem;">
     Paste your M-Pesa code (or the whole confirmation message) below.
-    If that package still has time left, we'll connect this device —
+    If that package still has time left, we'll connect this device   
     switching off whichever device was using it before.
   </p>
 
   {% if success %}
     <div class="badge badge-success" style="display:block;padding:12px;margin-bottom:12px;">
-      Reconnected — your {{ package_name }} package is active until {{ expiry_time|date:"d M, H:i" }}.
+      Reconnected    your {{ package_name }} package is active until {{ expiry_time|date:"d M, H:i" }}.
     </div>
     {% if router_warning %}
       <div class="badge badge-warning" style="display:block;padding:12px;">{{ router_warning }}</div>

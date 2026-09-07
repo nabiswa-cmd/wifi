@@ -27,7 +27,7 @@ class MikroTikRouterAdmin(admin.ModelAdmin):
             router.last_connection_status = 'CONNECTED' if status.connected else 'DISCONNECTED'
             router.last_checked_at = timezone.now()
             router.save(update_fields=['last_connection_status', 'last_checked_at'])
-        self.message_user(request, 'Connection test complete — see status column.')
+        self.message_user(request, 'Connection test complete    see status column.')
 
 
 @admin.register(MikroTikProfile)

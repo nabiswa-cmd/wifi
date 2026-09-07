@@ -47,7 +47,7 @@
       </div>
     </div>
 
-    <!-- Step 2a: sending the request — short dot-pulse, distinct from the
+    <!-- Step 2a: sending the request    short dot-pulse, distinct from the
          longer wait below, so it's clear something is actively happening
          right now rather than just sitting there. -->
     <div id="modal-step-sending" hidden style="text-align:center;">
@@ -150,8 +150,8 @@
     stepResult.hidden = step !== 'result';
   }
 
-  // Accepts however the customer typed it — 0712345678, 0712 345 678,
-  // 0712-345-678, +254712345678, 254712345678, 712345678 — and normalizes
+  // Accepts however the customer typed it    0712345678, 0712 345 678,
+  // 0712-345-678, +254712345678, 254712345678, 712345678    and normalizes
   // to 2547XXXXXXXX. Mirrors apps/billing/utils.normalize_phone_number so
   // the customer gets instant feedback, but the server re-validates
   // regardless (this is a UX shortcut, not the source of truth).
@@ -226,7 +226,7 @@
         showResult(false, 'Could not start payment', data.error || 'Please try again.');
         return;
       }
-      // Phase 2: request sent — now waiting on the customer to enter their PIN.
+      // Phase 2: request sent    now waiting on the customer to enter their PIN.
       showStep('waiting');
       statusText.textContent = 'Waiting for confirmation…';
       pollPaymentStatus(data.payment_id, Date.now());
@@ -237,7 +237,7 @@
 
   async function pollPaymentStatus(paymentId, startedAt) {
     if (Date.now() - startedAt > MAX_WAIT_MS) {
-      showResult(false, 'Taking longer than expected', 'If you completed the M-Pesa prompt, check your dashboard shortly — otherwise, try again.');
+      showResult(false, 'Taking longer than expected', 'If you completed the M-Pesa prompt, check your dashboard shortly  otherwise, try again.');
       return;
     }
     try {

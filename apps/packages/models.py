@@ -1,7 +1,7 @@
 """
 Packages app: database-driven Internet packages and their MikroTik
 profile mapping (Sections 8, 15). Nothing here is hard-coded into the
-frontend — the eight starter packages in Section 8 are only a fixtures
+frontend    the eight starter packages in Section 8 are only a fixtures
 seed, not code.
 """
 from django.db import models
@@ -47,7 +47,7 @@ class InternetPackage(models.Model):
     is_featured = models.BooleanField(default=False)
     display_order = models.PositiveIntegerField(default=0)
 
-    # Section 15: the crucial decoupling — Django package name/id never has
+    # Section 15: the crucial decoupling    Django package name/id never has
     # to match the MikroTik profile name.
     package_profile = models.ForeignKey(
         PackageProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='packages'

@@ -35,7 +35,7 @@
           <td data-label="Amount">{{ p.amount }}</td>
           <td data-label="Package">{{ p.package.name }}</td>
           <td data-label="Status"><span class="badge {% if p.status == 'SUCCESS' %}badge-success{% elif p.status == 'PENDING' %}badge-warning{% else %}badge-danger{% endif %}">{{ p.status }}</span></td>
-          <td data-label="Receipt">{{ p.mpesa_receipt_number|default:"—" }}</td>
+          <td data-label="Receipt">{{ p.mpesa_receipt_number|default:"  " }}</td>
           <td data-label="Date">{{ p.created_at|date:"d M Y H:i" }}</td>
         </tr>
         {% empty %}

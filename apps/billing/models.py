@@ -2,7 +2,7 @@
 Billing app: Payment + Subscription, the heart of Sections 10-12, 32.
 
 Hard rule encoded here: Subscription.activate() is only ever called from
-the M-Pesa callback handler (Phase 3) after Daraja confirms success — never
+the M-Pesa callback handler (Phase 3) after Daraja confirms success    never
 from the STK-push-initiation view, and never from client-reported status.
 """
 from django.conf import settings
@@ -25,7 +25,7 @@ class Payment(models.Model):
     phone_number = models.CharField(max_length=20)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
 
-    # Daraja identifiers — CheckoutRequestID is unique so a duplicate
+    # Daraja identifiers    CheckoutRequestID is unique so a duplicate
     # callback can never create a second Payment/Subscription (Section 32).
     checkout_request_id = models.CharField(max_length=64, unique=True, blank=True, null=True)
     merchant_request_id = models.CharField(max_length=64, blank=True, null=True)
@@ -53,7 +53,7 @@ class Payment(models.Model):
         pass (Section 10/32).
         """
         if self.status == self.Status.SUCCESS:
-            return  # already processed — no-op, not an error
+            return  # already processed    no-op, not an error
         self.status = self.Status.SUCCESS
         self.mpesa_receipt_number = receipt
         self.transaction_timestamp = transaction_time
@@ -104,7 +104,7 @@ class Subscription(models.Model):
     def is_currently_entitled(self) -> bool:
         """
         The single source of truth for 'does this customer have Internet
-        right now', per Section 11 — never inferred client-side.
+        right now', per Section 11    never inferred client-side.
         """
         return (
             self.status == self.Status.ACTIVE
@@ -116,12 +116,12 @@ class Subscription(models.Model):
     def activate_from_payment(cls, customer, package, payment):
         """
         Implements Section 12's renewal logic. Default behavior (also the
-        SystemSettings.renewal_behavior default): EXTEND — if the customer
+        SystemSettings.renewal_behavior default): EXTEND    if the customer
         already has time remaining, add the new package's duration onto the
         existing expiry rather than discarding it. This is deliberately the
         safest default: it can never lose purchased time.
 
-        Called ONLY after Payment.mark_success() — i.e. only from a verified
+        Called ONLY after Payment.mark_success()    i.e. only from a verified
         Daraja callback.
         """
         from apps.core.models import SystemSettings
@@ -162,7 +162,7 @@ class Subscription(models.Model):
     def activate_from_voucher(cls, customer, package, voucher):
         """
         Same renewal semantics as activate_from_payment (Section 12), for
-        a voucher code instead of an M-Pesa payment — kept as a sibling
+        a voucher code instead of an M-Pesa payment    kept as a sibling
         method rather than overloading activate_from_payment's signature.
         """
         from apps.core.models import SystemSettings

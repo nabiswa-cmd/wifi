@@ -13,7 +13,7 @@ class PaymentSerializer(serializers.ModelSerializer):
             'phone_number', 'amount', 'checkout_request_id', 'merchant_request_id',
             'mpesa_receipt_number', 'transaction_timestamp', 'status', 'created_at',
         ]
-        read_only_fields = fields  # payments are never edited through the API — only via the callback flow
+        read_only_fields = fields  # payments are never edited through the API    only via the callback flow
 
 
 class SubscriptionSerializer(serializers.ModelSerializer):

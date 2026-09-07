@@ -1,6 +1,6 @@
 """
 MikroTik app: router config, profile mapping, and live session records
-(Sections 13-17). No live data is ever faked (Section 36) — if a router
+(Sections 13-17). No live data is ever faked (Section 36)    if a router
 isn't reachable, connection_status just says so.
 """
 from django.conf import settings
@@ -42,7 +42,7 @@ class MikroTikRouter(models.Model):
 
 class MikroTikProfile(models.Model):
     """The MikroTik-side HotSpot user profile name a package maps to
-    (Section 15) — e.g. Django '5 Hours' -> MikroTik '5-HOUR-5MBPS'."""
+    (Section 15)    e.g. Django '5 Hours' -> MikroTik '5-HOUR-5MBPS'."""
     router = models.ForeignKey(MikroTikRouter, on_delete=models.CASCADE, related_name='profiles')
     profile_name = models.CharField(max_length=100, help_text='Exact profile name as configured on the router')
     rate_limit = models.CharField(max_length=50, blank=True, help_text="e.g. '2M/5M'")
