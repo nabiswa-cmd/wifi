@@ -1,6 +1,6 @@
 """
 Daraja (M-Pesa) client. This is the ONLY place in the codebase that talks
-to Safaricom's API    billing/views.py just calls stk_push() and reacts to
+to Safaricom's API — billing/views.py just calls stk_push() and reacts to
 success/failure, it never builds a Daraja payload itself.
 """
 import base64
@@ -20,7 +20,7 @@ BASE_URLS = {
 
 class MpesaError(Exception):
     """Raised whenever Daraja rejects the auth request or the STK push
-    itself. Never raised for 'customer cancelled/entered wrong PIN'   
+    itself. Never raised for 'customer cancelled/entered wrong PIN' —
     that's a normal callback outcome, handled in views.mpesa_callback."""
 
 
@@ -51,7 +51,7 @@ def stk_push(*, phone_number: str, amount, account_reference: str, transaction_d
     """
     Sends the actual STK push to the customer's phone. Returns Daraja's
     JSON response (contains CheckoutRequestID/MerchantRequestID). This
-    response only confirms the *prompt was sent*    never treat it as proof
+    response only confirms the *prompt was sent* — never treat it as proof
     of payment. Only apps.billing.views.mpesa_callback, driven by
     Safaricom's callback, may call Payment.mark_success().
     """
