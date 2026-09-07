@@ -13,7 +13,7 @@
 
   {% if success %}
     <div class="badge badge-success" style="display:block;padding:12px;margin-bottom:12px;">
-      Reconnected — your {{ package_name }} package is active until {{ expiry_time|date:"d M, H:i" }}.
+      Reconnected  your {{ package_name }} package is active until {{ expiry_time|date:"d M, H:i" }}.
     </div>
     {% if router_warning %}
       <div class="badge badge-warning" style="display:block;padding:12px;">{{ router_warning }}</div>

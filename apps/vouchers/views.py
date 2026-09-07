@@ -76,7 +76,7 @@ def redeem_voucher(request):
     if warning:
         messages.warning(request, warning)
 
-    messages.success(request, f"Connected — your {subscription.package.name} package is active "
+    messages.success(request, f"Connected  your {subscription.package.name} package is active "
                                f"until {subscription.expiry_time:%d %b, %H:%M}.")
     return redirect(back)
 

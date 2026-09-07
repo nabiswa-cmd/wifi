@@ -1,4 +1,4 @@
-# NABISWA WIFI — Billing & Hotspot Management Platform
+# NABISWA WIFI  Billing & Hotspot Management Platform
 
 Phase 1 (Foundation) of a from-scratch Wi-Fi billing system: Django + DRF +
 Supabase Postgres, built to eventually drive M-Pesa (Daraja) payments and a
@@ -11,11 +11,11 @@ MikroTik HotSpot captive portal.
   `Customer`, `Device`, `InternetPackage`, `PackageProfile`, `Payment`,
   `Subscription`, `MikroTikRouter`, `MikroTikProfile`, `InternetSession`,
   `Voucher`, `VoucherBatch`, `SystemSettings`, `AuditLog`, `Notification`
-- `MikroTikService` abstraction (`apps/mikrotik/services.py`) — currently
+- `MikroTikService` abstraction (`apps/mikrotik/services.py`)  currently
   backed by `NullMikroTikBackend`, which is honest about "MikroTik not
   connected" rather than faking data (Section 36)
 - Billing engine core: `Subscription.activate_from_payment()` implements the
-  Section 12 renewal rule (default: **EXTEND** — never lose purchased time)
+  Section 12 renewal rule (default: **EXTEND**  never lose purchased time)
 - Light/dark theme system using the exact palettes supplied, CSS variables,
   mobile-first responsive tables
 - Staff login + placeholder dashboard, customer captive-portal landing page
@@ -26,16 +26,16 @@ MikroTik HotSpot captive portal.
 
 - DRF viewsets wired into `/api/`: `packages/`, `customers/` (staff CRUD +
   `suspend`/`reactivate`/`disconnect_session` actions), `payments/` and
-  `subscriptions/` (read-only — both are only ever mutated by the billing
+  `subscriptions/` (read-only  both are only ever mutated by the billing
   engine or the future Daraja callback, never by direct API writes)
-- `apps/core/permissions.py` — `HasRolePermission` enforces the Section 24
+- `apps/core/permissions.py`  `HasRolePermission` enforces the Section 24
   RBAC codenames (`manage_customers`, `manage_packages`, `view_payments`, …)
   against a staff user's `Role`
-- `apps/core/audit.py` — one `log_action()` helper used by every mutating
+- `apps/core/audit.py`  one `log_action()` helper used by every mutating
   staff action, so `AuditLog` rows are consistent (Section 25)
 - Real purchase flow: package card → phone number → `Payment(PENDING)` is
   created and the customer is dropped on a waiting page that polls
-  `/billing/payment/<id>/status/` — `_trigger_stk_push()` in
+  `/billing/payment/<id>/status/`  `_trigger_stk_push()` in
   `apps/billing/views.py` is the single, clearly-marked spot where Phase 3
   wires in the actual Daraja call
 - Admin dashboard (Section 20), Payments page (Section 21, with filters +
@@ -66,7 +66,7 @@ python manage.py runserver
 Visit `/` for the customer portal, `/admin-portal/login/` for staff login,
 `/django-admin/` for Django's built-in admin.
 
-## Deploying to Vercel — and the one thing Vercel can't do
+## Deploying to Vercel  and the one thing Vercel can't do
 
 Vercel runs `config/wsgi.py` as a serverless function (see `vercel.json`).
 That's fine for every request/response flow: STK push initiation, the M-Pesa
@@ -75,14 +75,14 @@ callback, the customer portal, the admin dashboard.
 **It cannot run anything long-lived or scheduled**, and this system needs two
 such things:
 
-1. **Subscription expiry** — something has to flip `ACTIVE` subscriptions to
+1. **Subscription expiry**  something has to flip `ACTIVE` subscriptions to
    `EXPIRED` (and call `MikroTikService.disable_user()`) the moment they lapse.
-2. **MikroTik state sync / persistent connection** — polling active sessions,
+2. **MikroTik state sync / persistent connection**  polling active sessions,
    retrying activation if the router was offline when payment succeeded
    (Section 32).
 
-**Recommended architecture:** a small always-on process — a $5-6/mo VPS,
-Fly.io machine, or Railway worker — running a scheduler (cron, or a simple
+**Recommended architecture:** a small always-on process  a $5-6/mo VPS,
+Fly.io machine, or Railway worker  running a scheduler (cron, or a simple
 `while True` loop with `time.sleep`) that either:
 - runs `python manage.py expire_subscriptions` and `sync_mikrotik` directly
   against the same Supabase database, or
@@ -91,7 +91,7 @@ Fly.io machine, or Railway worker — running a scheduler (cron, or a simple
   `INTERNAL_TASK_TOKEN`.
 
 Either way this worker is the **only** process that needs a persistent
-MikroTik API connection — Vercel functions stay stateless and short-lived,
+MikroTik API connection  Vercel functions stay stateless and short-lived,
 exactly as required.
 
 This is flagged now, in Phase 1, rather than discovered later.

@@ -29,7 +29,7 @@ urlpatterns = [
 
     path('auth/status/', not_yet_implemented),
     path('mpesa/stkpush/', not_yet_implemented),      # STK push is triggered from /billing/buy/<id>/ instead
-    path('mpesa/callback/', mpesa_callback),          # Daraja posts here — see apps.billing.views.mpesa_callback
+    path('mpesa/callback/', mpesa_callback),          # Daraja posts here  see apps.billing.views.mpesa_callback
     path('sessions/', not_yet_implemented),
     path('devices/', not_yet_implemented),
     path('vouchers/', not_yet_implemented),

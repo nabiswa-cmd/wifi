@@ -3,7 +3,7 @@ Customer-facing purchase flow (Section 9/10/11) and the Daraja callback
 (Section 10/32).
 
 `initiate_purchase` creates a PENDING Payment, then actually calls Daraja
-via `_trigger_stk_push`. It does NOT activate anything itself — only
+via `_trigger_stk_push`. It does NOT activate anything itself  only
 `mpesa_callback`, triggered by Safaricom's server hitting our callback URL
 after the customer enters their PIN, may mark a payment successful and
 activate a subscription (Section 10's hard rule).
@@ -67,7 +67,7 @@ def initiate_purchase(request, package_id):
     ajax = _is_ajax(request)
 
     # Accepts 0712345678, 0712 345 678, +254712345678, 254712345678,
-    # 712345678, etc. — normalized once here so every downstream table
+    # 712345678, etc.  normalized once here so every downstream table
     # (Customer, Payment) and the Daraja call all use the same
     # 254XXXXXXXXX format regardless of how the customer typed it.
     phone_number = normalize_phone_number(raw_phone)
@@ -98,21 +98,21 @@ def initiate_purchase(request, package_id):
         if payment.status == Payment.Status.FAILED:
             return JsonResponse({'error': 'Could not reach M-Pesa. Please try again.'}, status=502)
         # The modal on the landing page takes it from here via
-        # /billing/payment/<id>/status/ — no redirect, no new page load.
+        # /billing/payment/<id>/status/  no redirect, no new page load.
         return JsonResponse({'payment_id': payment.id, 'status': payment.status})
 
     return redirect('billing:payment_waiting', payment_id=payment.id)
 
 
 def payment_waiting(request, payment_id):
-    """Fallback page for non-JS clients only — the primary flow never
+    """Fallback page for non-JS clients only  the primary flow never
     navigates here (see landing.html's modal)."""
     payment = get_object_or_404(Payment, pk=payment_id)
     return render(request, 'customers/payment_waiting.html', {'payment': payment})
 
 
 def payment_status(request, payment_id):
-    """Polled by the modal's JS (Section 10 — status is always read from
+    """Polled by the modal's JS (Section 10  status is always read from
     the backend record, never assumed client-side)."""
     payment = get_object_or_404(Payment, pk=payment_id)
     return JsonResponse({
@@ -138,7 +138,7 @@ def reconnect_by_code(request):
     both funnel into apps.mikrotik.services.connect_customer_device so
     the one-payment-one-device rule is enforced identically either way.
 
-    Never re-verifies the payment with Safaricom — it trusts our own
+    Never re-verifies the payment with Safaricom  it trusts our own
     Payment record, which was itself only ever marked SUCCESS by a real
     Daraja callback (see mpesa_callback below).
     """
@@ -149,7 +149,7 @@ def reconnect_by_code(request):
 
     code = extract_mpesa_code(request.POST.get('code', ''))
     if not code:
-        messages.error(request, "That doesn't look like an M-Pesa code — paste the code "
+        messages.error(request, "That doesn't look like an M-Pesa code  paste the code "
                                  "(e.g. SFH3JT6LKQ) or the whole confirmation message.")
         return redirect(back)
 
@@ -159,7 +159,7 @@ def reconnect_by_code(request):
         .select_related('customer', 'package', 'subscription')
         .first()
     )
-    # payment.subscription is a *reverse* one-to-one accessor — if no
+    # payment.subscription is a *reverse* one-to-one accessor  if no
     # Subscription row was ever created for this payment, touching the
     # attribute directly raises RelatedObjectDoesNotExist instead of
     # returning None. hasattr() is safe here because Django deliberately
@@ -171,14 +171,14 @@ def reconnect_by_code(request):
 
     subscription = payment.subscription
     if not subscription.is_currently_entitled():
-        messages.error(request, "This code's session has expired — that package's time has run out.")
+        messages.error(request, "This code's session has expired  that package's time has run out.")
         return redirect(back)
 
     warning = connect_customer_device(request, payment.customer, subscription)
     if warning:
         messages.warning(request, warning)
 
-    messages.success(request, f"Reconnected — your {payment.package.name} package is active "
+    messages.success(request, f"Reconnected  your {payment.package.name} package is active "
                                f"until {subscription.expiry_time:%d %b, %H:%M}.")
     return redirect(back)
 

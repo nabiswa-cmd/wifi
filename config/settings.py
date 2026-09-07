@@ -140,7 +140,7 @@ MPESA_TILL_NUMBER = config('MPESA_TILL_NUMBER', default='')
 MPESA_PASSKEY = config('MPESA_PASSKEY', default='')
 MPESA_CALLBACK_URL = config('MPESA_CALLBACK_URL', default='')
 
-# NABISWA WIFI takes payments on a Till (Buy Goods), not a Paybill — this
+# NABISWA WIFI takes payments on a Till (Buy Goods), not a Paybill  this
 # decides the STK push "TransactionType" in Phase 3:
 #   TILL    -> CustomerBuyGoodsOnline  (PartyB = MPESA_TILL_NUMBER)
 #   PAYBILL -> CustomerPayBillOnline   (PartyB = MPESA_SHORTCODE)
@@ -148,7 +148,7 @@ MPESA_ACCOUNT_TYPE = config('MPESA_ACCOUNT_TYPE', default='TILL')  # 'TILL' or '
 MPESA_TRANSACTION_TYPE = (
     'CustomerBuyGoodsOnline' if MPESA_ACCOUNT_TYPE == 'TILL' else 'CustomerPayBillOnline'
 )
-# The actual PartyB to send in the STK push payload — resolved once here
+# The actual PartyB to send in the STK push payload  resolved once here
 # so Phase 3's request-building code just reads settings.MPESA_PARTY_B.
 MPESA_PARTY_B = MPESA_TILL_NUMBER if MPESA_ACCOUNT_TYPE == 'TILL' and MPESA_TILL_NUMBER else MPESA_SHORTCODE
 

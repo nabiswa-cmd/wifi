@@ -6,7 +6,7 @@ else may import librouteros or open a socket directly.
 Design:
 - `MikroTikBackend` is the interface every real backend implements.
 - `NullMikroTikBackend` is what runs today: it performs no network I/O and
-  is honest about that (Section 36 — never fake live data).
+  is honest about that (Section 36  never fake live data).
 - A future `RouterOSBackend` (using `librouteros` or the REST API on newer
   RouterOS) implements the same interface and is swapped in via
   `get_mikrotik_service()` without touching billing/customers code.
@@ -79,7 +79,7 @@ class NullMikroTikBackend(MikroTikBackend):
     """
     Active backend until a physical router is configured and Phase 4 lands.
     Every method fails loudly and explicitly rather than pretending to
-    succeed — billing must never assume Internet was granted just because
+    succeed  billing must never assume Internet was granted just because
     a payment succeeded (Section 10/32).
     """
 
@@ -129,13 +129,13 @@ class NullMikroTikBackend(MikroTikBackend):
 def connect_customer_device(request, customer, subscription):
     """
     The one place 'get this customer's current device online, and kick off
-    whichever device was using this subscription before' lives — shared by
+    whichever device was using this subscription before' lives  shared by
     every way a customer can get connected (M-Pesa reconnect, vouchers,
     and eventually manual/login accounts), so the one-payment-one-device
     rule is enforced identically no matter which door they came through.
 
     Returns a warning string if the router couldn't be reached (never
-    pretends success it can't back up — Section 36), or None if clean.
+    pretends success it can't back up  Section 36), or None if clean.
     """
     from django.utils import timezone
     from .models import InternetSession, MikroTikRouter
@@ -166,7 +166,7 @@ def connect_customer_device(request, customer, subscription):
                 )
             except MikroTikConnectionError:
                 warning = ("Your old device couldn't be reached to disconnect it "
-                           "automatically — it may still show as online until it "
+                           "automatically  it may still show as online until it "
                            "times out on its own.")
         previous_session.status = InternetSession.Status.CLOSED
         previous_session.logout_time = timezone.now()

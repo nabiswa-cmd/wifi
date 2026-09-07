@@ -22,7 +22,7 @@
   </div>
   <div class="card">
     <h3>Devices</h3>
-    {% for d in devices %}<p>{{ d.mac_address }} — {{ d.get_device_type_display }}</p>{% empty %}<p>No devices on record</p>{% endfor %}
+    {% for d in devices %}<p>{{ d.mac_address }}  {{ d.get_device_type_display }}</p>{% empty %}<p>No devices on record</p>{% endfor %}
   </div>
 </div>
 <div class="card" style="margin:20px;">
