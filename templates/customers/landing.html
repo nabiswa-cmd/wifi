@@ -26,7 +26,7 @@
       </div>
     </div>
     <div class="package-body">
-      <div class="price">{{ branding.currency }} {{ package.price }}</div>
+      <div class="price">{{ branding.currency }} {{ package.price|floatformat:"-2" }}</div>
       <p class="validity">Valid for {{ package.duration }} {{ package.get_duration_unit_display }}</p>
       <button class="btn buy-btn" data-package-id="{{ package.id }}" data-package-name="{{ package.name }}">Select Plan</button>
     </div>
