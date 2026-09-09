@@ -16,7 +16,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='insecure-dev-key-change-me')
 DEBUG = config('DJANGO_DEBUG', default=False, cast=bool)
-ALLOWED_HOSTS =['*']
+# Railway assigns you a *.up.railway.app domain (and your own domain if you
+# attach one) — put the actual hostname(s) in the ALLOWED_HOSTS env var,
+# comma-separated, once you know them. '*' is a safe default to get you
+# deployed first, but tighten it once the real domain is live.
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())
+# Django 4+ requires the *scheme* here too, e.g.
+# CSRF_TRUSTED_ORIGINS=https://your-app.up.railway.app
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -154,6 +161,11 @@ MPESA_PARTY_B = MPESA_TILL_NUMBER if MPESA_ACCOUNT_TYPE == 'TILL' and MPESA_TILL
 
 # --- Internal worker auth (for the separate expiry/MikroTik-sync process) ---
 INTERNAL_TASK_TOKEN = config('INTERNAL_TASK_TOKEN', default='')
+
+# --- On-site MikroTik agent auth (Bearer token the agent sends on every
+# request to /api/mikrotik/jobs/..., /complete/, and /heartbeat/). Must
+# match the same value in the agent's .env (MIKROTIK_AGENT_API_KEY). ---
+MIKROTIK_AGENT_API_KEY = config('MIKROTIK_AGENT_API_KEY', default='')
 
 LOGIN_URL = '/admin-portal/login/'
 SESSION_COOKIE_SECURE = not DEBUG

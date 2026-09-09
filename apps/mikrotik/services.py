@@ -245,34 +245,42 @@ class RouterOSBackend(MikroTikBackend):
     def get_router_status(self) -> RouterStatus:
         return self.test_connection()
 
-    # Not yet needed by any calling code — keep honest (Section 36)
-    # rather than pretending these work before they're wired up.
     def update_user(self, username: str, **fields):
-        raise MikroTikConnectionError('update_user is not implemented yet.')
+        self._enqueue('UPDATE_USER', {'username': username, 'fields': fields})
 
     def disable_user(self, username: str):
-        raise MikroTikConnectionError('disable_user is not implemented yet.')
+        self._enqueue('DISABLE_USER', {'username': username})
 
     def delete_user(self, username: str):
-        raise MikroTikConnectionError('delete_user is not implemented yet.')
+        self._enqueue('DELETE_USER', {'username': username})
 
     def activate_user(self, username: str):
-        raise MikroTikConnectionError('activate_user is not implemented yet.')
-
-    def get_active_users(self):
-        return []
-
-    def get_active_sessions(self):
-        return []
-
-    def get_user_usage(self, username: str):
-        return None
+        self._enqueue('ACTIVATE_USER', {'username': username})
 
     def set_bandwidth(self, username: str, rate_limit: str):
-        raise MikroTikConnectionError('set_bandwidth is not implemented yet.')
+        self._enqueue('SET_BANDWIDTH', {'username': username, 'rate_limit': rate_limit})
 
     def set_session_timeout(self, username: str, timeout: str):
-        raise MikroTikConnectionError('set_session_timeout is not implemented yet.')
+        self._enqueue('SET_SESSION_TIMEOUT', {'username': username, 'timeout': timeout})
+
+    # These three are read-only "what does the router say right now"
+    # queries. Since Django can't open a live socket to the router (see
+    # class docstring), they read the last snapshot the agent pushed on
+    # its most recent heartbeat rather than blocking on a queued job.
+    # If that snapshot is stale (agent offline), that's visible via
+    # test_connection()/get_router_status() — callers should check that
+    # too rather than trusting this data blindly (Section 36).
+    def get_active_users(self):
+        return self.router.cached_active_users or []
+
+    def get_active_sessions(self):
+        return self.router.cached_active_sessions or []
+
+    def get_user_usage(self, username: str):
+        for session in self.router.cached_active_sessions or []:
+            if session.get('username') == username:
+                return session
+        return None
 
 
 def get_mikrotik_service(router) -> MikroTikBackend:

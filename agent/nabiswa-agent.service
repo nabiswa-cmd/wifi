@@ -1,0 +1,17 @@
+[Unit]
+Description=NABISWA WIFI MikroTik on-site agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust these two paths to wherever you cloned the repo on the on-site machine
+WorkingDirectory=/opt/nabiswa-wifi/agent
+ExecStart=/opt/nabiswa-wifi/agent/venv/bin/python /opt/nabiswa-wifi/agent/agent.py
+EnvironmentFile=/opt/nabiswa-wifi/agent/.env
+Restart=always
+RestartSec=5
+User=nabiswa
+
+[Install]
+WantedBy=multi-user.target

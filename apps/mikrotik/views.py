@@ -71,12 +71,32 @@ def complete_job(request, job_id):
 @csrf_exempt
 @require_POST
 def heartbeat(request):
+    """
+    Called by the on-site agent every poll cycle. Besides proving the
+    agent is alive (used by test_connection()'s 60s staleness check),
+    the agent may optionally attach its latest read of the router's
+    hotspot active-users/active-sessions tables — this is the only
+    place that live data enters Django, and it's always a snapshot,
+    never treated as more current than `last_checked_at` implies.
+    """
     if not _authenticated(request):
         return JsonResponse({'detail': 'Unauthorized'}, status=401)
+
+    try:
+        body = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        body = {}
 
     router = MikroTikRouter.objects.filter(is_active=True).first()
     if router:
         router.last_checked_at = timezone.now()
         router.last_connection_status = MikroTikRouter.ConnectionStatus.CONNECTED
-        router.save(update_fields=['last_checked_at', 'last_connection_status'])
+        update_fields = ['last_checked_at', 'last_connection_status']
+        if 'active_users' in body:
+            router.cached_active_users = body['active_users']
+            update_fields.append('cached_active_users')
+        if 'active_sessions' in body:
+            router.cached_active_sessions = body['active_sessions']
+            update_fields.append('cached_active_sessions')
+        router.save(update_fields=update_fields)
     return JsonResponse({'ok': True})

@@ -30,6 +30,12 @@ class MikroTikRouter(models.Model):
     )
     last_checked_at = models.DateTimeField(blank=True, null=True)
 
+    # Pushed by the on-site agent on every heartbeat (Section 17: this is
+    # the *live* view, kept separate from InternetSession's billing record).
+    # Never written by anything except the agent's heartbeat call.
+    cached_active_users = models.JSONField(default=list, blank=True)
+    cached_active_sessions = models.JSONField(default=list, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -69,6 +75,12 @@ class MikroTikJob(models.Model):
     class JobType(models.TextChoices):
         CREATE_USER = 'CREATE_USER', 'Create hotspot user'
         DISCONNECT_USER = 'DISCONNECT_USER', 'Disconnect user'
+        DISABLE_USER = 'DISABLE_USER', 'Disable hotspot user'
+        DELETE_USER = 'DELETE_USER', 'Delete hotspot user'
+        ACTIVATE_USER = 'ACTIVATE_USER', 'Re-enable hotspot user'
+        UPDATE_USER = 'UPDATE_USER', 'Update hotspot user fields'
+        SET_BANDWIDTH = 'SET_BANDWIDTH', 'Set bandwidth rate limit'
+        SET_SESSION_TIMEOUT = 'SET_SESSION_TIMEOUT', 'Set session timeout'
 
     class Status(models.TextChoices):
         PENDING = 'PENDING', 'Pending'
