@@ -7,3 +7,5 @@ requests==2.32.3
 django-cors-headers==4.4.0
 gunicorn==22.0.0
 whitenoise==6.7.0
+librouteros==3.2.1
+python-dotenv==1.0.1
