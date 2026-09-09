@@ -42,7 +42,7 @@ def _trigger_stk_push(payment: Payment):
         data = mpesa.stk_push(
             phone_number=payment.phone_number,
             amount=payment.amount,
-            account_reference=f'NABISWA{payment.id}',
+             account_reference=f'WIFI-{payment.id}',
             transaction_desc=f'{payment.package.name} WiFi',
         )
     except mpesa.MpesaError as exc:

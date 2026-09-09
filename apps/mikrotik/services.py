@@ -202,15 +202,85 @@ def connect_customer_device(request, customer, subscription):
     return warning
 
 
+class RouterOSBackend(MikroTikBackend):
+    """
+    The real backend. Since Django (Vercel) and the router (on-site LAN)
+    can't talk directly, this never opens a socket to RouterOS itself —
+    it writes a MikroTikJob row, which the on-site agent (agent/agent.py)
+    picks up over HTTPS polling and executes on the LAN.
+
+    Important honesty note (Section 36): a queued job is NOT a confirmed
+    result. create_user()/disconnect_user() returning here only means
+    "Django has asked for this" — not "the router has done it yet". The
+    agent reports back via the /api/mikrotik/jobs/<id>/complete/ endpoint,
+    and test_connection() below only trusts a recent agent heartbeat, not
+    the existence of a queued job.
+    """
+
+    def _enqueue(self, job_type, payload):
+        from .models import MikroTikJob
+        return MikroTikJob.objects.create(router=self.router, job_type=job_type, payload=payload)
+
+    def connect(self):
+        return True  # no live socket to open from here; see class docstring
+
+    def test_connection(self) -> RouterStatus:
+        from django.utils import timezone
+        if not self.router.last_checked_at:
+            return RouterStatus(connected=False, detail='No heartbeat received from the on-site agent yet.')
+        age = (timezone.now() - self.router.last_checked_at).total_seconds()
+        if age > 60:
+            return RouterStatus(connected=False, detail=f'Agent heartbeat is {int(age)}s old — agent may be offline.')
+        return RouterStatus(connected=True, detail='Agent checked in recently.')
+
+    def create_user(self, username: str, password: str, profile_name: str):
+        self._enqueue(
+            'CREATE_USER',
+            {'username': username, 'password': password, 'profile_name': profile_name},
+        )
+
+    def disconnect_user(self, username: str):
+        self._enqueue('DISCONNECT_USER', {'username': username})
+
+    def get_router_status(self) -> RouterStatus:
+        return self.test_connection()
+
+    # Not yet needed by any calling code — keep honest (Section 36)
+    # rather than pretending these work before they're wired up.
+    def update_user(self, username: str, **fields):
+        raise MikroTikConnectionError('update_user is not implemented yet.')
+
+    def disable_user(self, username: str):
+        raise MikroTikConnectionError('disable_user is not implemented yet.')
+
+    def delete_user(self, username: str):
+        raise MikroTikConnectionError('delete_user is not implemented yet.')
+
+    def activate_user(self, username: str):
+        raise MikroTikConnectionError('activate_user is not implemented yet.')
+
+    def get_active_users(self):
+        return []
+
+    def get_active_sessions(self):
+        return []
+
+    def get_user_usage(self, username: str):
+        return None
+
+    def set_bandwidth(self, username: str, rate_limit: str):
+        raise MikroTikConnectionError('set_bandwidth is not implemented yet.')
+
+    def set_session_timeout(self, username: str, timeout: str):
+        raise MikroTikConnectionError('set_session_timeout is not implemented yet.')
+
+
 def get_mikrotik_service(router) -> MikroTikBackend:
     """
-    Factory the rest of the app calls. Today this always returns the null
-    backend. When Phase 4 lands, this becomes:
-
-        if router.is_active:
-            return RouterOSBackend(router)
-        return NullMikroTikBackend(router)
-
-    and nothing else in the codebase changes.
+    Factory the rest of the app calls. RouterOSBackend enqueues jobs for
+    the on-site agent; NullMikroTikBackend is the honest fallback when
+    there's no active router configured at all.
     """
+    if router and router.is_active:
+        return RouterOSBackend(router)
     return NullMikroTikBackend(router)

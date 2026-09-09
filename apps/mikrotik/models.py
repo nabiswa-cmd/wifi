@@ -58,6 +58,40 @@ class MikroTikProfile(models.Model):
         return f'{self.profile_name} @ {self.router.name}'
 
 
+class MikroTikJob(models.Model):
+    """
+    A queued instruction for the on-site agent to execute against the
+    real router over the LAN (see agent/agent.py). Django can never talk
+    to the router directly (it's on Vercel, the router is on-site behind
+    NAT) — this table is the bridge. RouterOSBackend below only ever
+    writes rows here; only the agent ever marks them DONE/FAILED.
+    """
+    class JobType(models.TextChoices):
+        CREATE_USER = 'CREATE_USER', 'Create hotspot user'
+        DISCONNECT_USER = 'DISCONNECT_USER', 'Disconnect user'
+
+    class Status(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        DONE = 'DONE', 'Done'
+        FAILED = 'FAILED', 'Failed'
+
+    router = models.ForeignKey(MikroTikRouter, on_delete=models.CASCADE, related_name='jobs')
+    job_type = models.CharField(max_length=20, choices=JobType.choices)
+    payload = models.JSONField()
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    result_detail = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = 'mikrotik_job'
+        indexes = [models.Index(fields=['router', 'status'])]
+
+    def __str__(self):
+        return f'{self.job_type} ({self.status}) @ {self.router.name}'
+
+
 class InternetSession(models.Model):
     """
     Database record of a session. Deliberately separate from whatever

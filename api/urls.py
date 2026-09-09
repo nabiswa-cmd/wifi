@@ -12,6 +12,7 @@ from apps.packages.viewsets import InternetPackageViewSet
 from apps.customers.viewsets import CustomerViewSet
 from apps.billing.viewsets import PaymentViewSet, SubscriptionViewSet
 from apps.billing.views import mpesa_callback
+from apps.mikrotik.views import pending_jobs, complete_job, heartbeat
 
 router = DefaultRouter()
 router.register('packages', InternetPackageViewSet, basename='package')
@@ -34,6 +35,9 @@ urlpatterns = [
     path('devices/', not_yet_implemented),
     path('vouchers/', not_yet_implemented),
     path('mikrotik/routers/', not_yet_implemented),   # Phase 4
+    path('mikrotik/jobs/pending/', pending_jobs),          # on-site agent polls this
+    path('mikrotik/jobs/<int:job_id>/complete/', complete_job),
+    path('mikrotik/heartbeat/', heartbeat),
     path('reports/', not_yet_implemented),
     path('notifications/', not_yet_implemented),
     path('settings/', not_yet_implemented),
