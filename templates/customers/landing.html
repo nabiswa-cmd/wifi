@@ -75,6 +75,9 @@
       <div id="modal-result-icon"></div>
       <h3 id="modal-result-title"></h3>
       <p id="modal-result-message" style="color:var(--color-text-muted);"></p>
+      <div id="modal-manual-login-wrap" hidden style="margin-bottom:10px;">
+        <button class="btn btn-secondary" id="modal-manual-login-btn" type="button">Not online yet? Tap to connect</button>
+      </div>
       <button class="btn" id="modal-close-btn">Done</button>
     </div>
 
@@ -146,6 +149,35 @@
   // Where to send the customer once they're connected. Swap this for your
   // real portfolio/site URL.
   const SUCCESS_REDIRECT_URL = 'https://software-engineers.netlify.app/';
+
+  // MikroTik's HotSpot redirect appends these — see the login.html on the
+  // router itself. Only present when the customer arrived via the actual
+  // captive portal (not when just browsing the site directly).
+  const routerParams = new URLSearchParams(window.location.search);
+  const routerMac = routerParams.get('mac') || '';
+  const routerIp = routerParams.get('ip') || '';
+  const linkLogin = routerParams.get('link-login') || '';
+  const linkOrig = routerParams.get('link-orig') || '';
+
+  // Submits the router's own login form directly — this can ONLY be done
+  // by the customer's own browser (it's on the LAN, Django on Railway is
+  // not), which is why this lives here in client JS and nowhere else.
+  function autoLoginToHotspot(username) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = linkLogin;
+    form.style.display = 'none';
+    const fields = { username: username, password: username, dst: linkOrig };
+    Object.keys(fields).forEach((key) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = fields[key];
+      form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  }
 
   function showStep(step) {
     stepPhone.hidden = step !== 'phone';
@@ -245,10 +277,17 @@
       return;
     }
     try {
-      const res = await fetch(`/billing/payment/${paymentId}/status/`);
+      const res = await fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(routerMac)}&ip=${encodeURIComponent(routerIp)}`);
       const data = await res.json();
       if (data.status === 'SUCCESS') {
-        showResult(true, 'Payment successful ', "You're connected enjoy your Wi-Fi.");
+        showResult(true, 'Payment successful — ', "You're connected — enjoy your Wi-Fi.");
+        if (data.mikrotik_username && linkLogin) {
+          document.getElementById('modal-manual-login-wrap').hidden = false;
+          document.getElementById('modal-manual-login-btn').onclick = () => autoLoginToHotspot(data.mikrotik_username);
+          // Give the on-site agent (polls every ~5s) time to actually
+          // create the user on the router before we try automatically.
+          setTimeout(() => autoLoginToHotspot(data.mikrotik_username), 7000);
+        }
       } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {
         showResult(false, 'Payment not completed', 'The transaction was ' + data.status.toLowerCase() + '. Try again.');
       } else {

@@ -112,14 +112,32 @@ def payment_waiting(request, payment_id):
 
 
 def payment_status(request, payment_id):
-    """Polled by the modal's JS (Section 10  status is always read from
-    the backend record, never assumed client-side)."""
-    payment = get_object_or_404(Payment, pk=payment_id)
-    return JsonResponse({
-        'status': payment.status,
-        'receipt': payment.mpesa_receipt_number,
-    })
+    """Polled by the modal's JS (Section 10 — status is always read from
+    the backend record, never assumed client-side).
 
+    On the first poll that sees SUCCESS, also enqueues the real MikroTik
+    connect for this device. This can only happen here (not in
+    mpesa_callback) because mac/ip only exist because the customer's own
+    browser is passing them along from the HotSpot redirect — Safaricom's
+    callback request has no idea which device is asking.
+    """
+    payment = get_object_or_404(Payment, pk=payment_id)
+    response = {'status': payment.status, 'receipt': payment.mpesa_receipt_number}
+
+    if payment.status == Payment.Status.SUCCESS and hasattr(payment, 'subscription'):
+        subscription = payment.subscription
+        mac_address = request.GET.get('mac') or ''
+        if mac_address:
+            from apps.mikrotik.models import InternetSession
+            already_triggered = InternetSession.objects.filter(
+                subscription=subscription, mac_address=mac_address,
+            ).exists()
+            if not already_triggered:
+                connect_customer_device(request, payment.customer, subscription)
+        if subscription.mikrotik_username:
+            response['mikrotik_username'] = subscription.mikrotik_username
+
+    return JsonResponse(response)
 def _parse_transaction_date(value):
     """Daraja sends TransactionDate as an int like 20240521123456."""
     try:
