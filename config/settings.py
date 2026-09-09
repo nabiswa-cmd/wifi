@@ -20,7 +20,7 @@ DEBUG = config('DJANGO_DEBUG', default=False, cast=bool)
 # attach one) — put the actual hostname(s) in the ALLOWED_HOSTS env var,
 # comma-separated, once you know them. '*' is a safe default to get you
 # deployed first, but tighten it once the real domain is live.
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())
+ALLOWED_HOSTS = ['*']
 # Django 4+ requires the *scheme* here too, e.g.
 # CSRF_TRUSTED_ORIGINS=https://your-app.up.railway.app
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
