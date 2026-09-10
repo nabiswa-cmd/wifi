@@ -75,9 +75,6 @@
       <div id="modal-result-icon"></div>
       <h3 id="modal-result-title"></h3>
       <p id="modal-result-message" style="color:var(--color-text-muted);"></p>
-      <div id="modal-manual-login-wrap" hidden style="margin-bottom:10px;">
-        <button class="btn btn-secondary" id="modal-manual-login-btn" type="button">Not online yet? Tap to connect</button>
-      </div>
       <button class="btn" id="modal-close-btn">Done</button>
     </div>
 
@@ -140,6 +137,13 @@
   const resultMessage = document.getElementById('modal-result-message');
   const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
+  // Passed through by the router's login.html redirect (see
+  // router/login.html) — mac identifies this device to the hotspot, and
+  // link is the router's own login URL this device can auto-submit
+  // credentials to once payment succeeds, to skip a second manual login.
+  const HOTSPOT_MAC = '{{ hotspot_mac|escapejs }}';
+  const HOTSPOT_LINK_LOGIN = '{{ hotspot_link_login|escapejs }}';
+
   let currentPackageId = null;
   let pollTimer = null;
   let lastResultWasSuccess = false;
@@ -149,35 +153,6 @@
   // Where to send the customer once they're connected. Swap this for your
   // real portfolio/site URL.
   const SUCCESS_REDIRECT_URL = 'https://software-engineers.netlify.app/';
-
-  // MikroTik's HotSpot redirect appends these — see the login.html on the
-  // router itself. Only present when the customer arrived via the actual
-  // captive portal (not when just browsing the site directly).
-  const routerParams = new URLSearchParams(window.location.search);
-  const routerMac = routerParams.get('mac') || '';
-  const routerIp = routerParams.get('ip') || '';
-  const linkLogin = routerParams.get('link-login') || '';
-  const linkOrig = routerParams.get('link-orig') || '';
-
-  // Submits the router's own login form directly — this can ONLY be done
-  // by the customer's own browser (it's on the LAN, Django on Railway is
-  // not), which is why this lives here in client JS and nowhere else.
-  function autoLoginToHotspot(username) {
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = linkLogin;
-    form.style.display = 'none';
-    const fields = { username: username, password: username, dst: linkOrig };
-    Object.keys(fields).forEach((key) => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = key;
-      input.value = fields[key];
-      form.appendChild(input);
-    });
-    document.body.appendChild(form);
-    form.submit();
-  }
 
   function showStep(step) {
     stepPhone.hidden = step !== 'phone';
@@ -255,7 +230,7 @@
           'X-Requested-With': 'XMLHttpRequest',
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: `phone_number=${encodeURIComponent(normalized)}`,
+        body: `phone_number=${encodeURIComponent(normalized)}&mac=${encodeURIComponent(HOTSPOT_MAC)}`,
       });
       const data = await res.json();
       if (!res.ok || !data.payment_id) {
@@ -277,17 +252,25 @@
       return;
     }
     try {
-      const res = await fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(routerMac)}&ip=${encodeURIComponent(routerIp)}`);
+      const res = await fetch(
+        `/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}&link=${encodeURIComponent(HOTSPOT_LINK_LOGIN)}`
+      );
       const data = await res.json();
       if (data.status === 'SUCCESS') {
-        showResult(true, 'Payment successful — ', "You're connected — enjoy your Wi-Fi.");
-        if (data.mikrotik_username && linkLogin) {
-          document.getElementById('modal-manual-login-wrap').hidden = false;
-          document.getElementById('modal-manual-login-btn').onclick = () => autoLoginToHotspot(data.mikrotik_username);
-          // Give the on-site agent (polls every ~5s) time to actually
-          // create the user on the router before we try automatically.
-          setTimeout(() => autoLoginToHotspot(data.mikrotik_username), 7000);
+        if (data.link_login && data.mikrotik_username) {
+          autoLoginToHotspot(data.link_login, data.mikrotik_username);
         }
+        showResult(
+          true, 'Payment successful ',
+          data.link_login
+            ? "You're connected  enjoy your Wi-Fi."
+            // No link_login means this device didn't arrive via the
+            // hotspot redirect (e.g. testing directly on the site) —
+            // auto-login has nothing to submit to, so say so honestly
+            // instead of claiming a connection we can't back up.
+            : `Your package is active. If you're not online in a few seconds, ` +
+              `reconnect to the WiFi and log in with username and password: ${data.mikrotik_username}`
+        );
       } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {
         showResult(false, 'Payment not completed', 'The transaction was ' + data.status.toLowerCase() + '. Try again.');
       } else {
@@ -295,6 +278,43 @@
       }
     } catch (err) {
       pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+    }
+  }
+
+  // Standard MikroTik hotspot auto-login pattern: POST username/password
+  // straight to the router's own login URL. This always works even while
+  // "unauthenticated" because the router itself (not the wider internet)
+  // is always reachable on the LAN — walled garden only restricts
+  // everything else. Submits into a hidden iframe so the success screen
+  // stays visible instead of navigating the whole tab away.
+  function autoLoginToHotspot(loginUrl, username) {
+    try {
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.name = 'hotspot-auto-login';
+      document.body.appendChild(iframe);
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = loginUrl;
+      form.target = 'hotspot-auto-login';
+
+      const addField = (name, value) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+      };
+      addField('username', username);
+      addField('password', username); // password == username by design (see connect_customer_device)
+
+      document.body.appendChild(form);
+      form.submit();
+      setTimeout(() => { form.remove(); iframe.remove(); }, 5000);
+    } catch (err) {
+      // Non-fatal  the fallback message in showResult already tells the
+      // customer their credentials in case auto-login silently failed.
     }
   }
 

@@ -81,6 +81,8 @@ class MikroTikJob(models.Model):
         UPDATE_USER = 'UPDATE_USER', 'Update hotspot user fields'
         SET_BANDWIDTH = 'SET_BANDWIDTH', 'Set bandwidth rate limit'
         SET_SESSION_TIMEOUT = 'SET_SESSION_TIMEOUT', 'Set session timeout'
+        BYPASS_MAC = 'BYPASS_MAC', 'Grant a device internet without hotspot login'
+        UNBYPASS_MAC = 'UNBYPASS_MAC', 'Revoke a bypassed device'
 
     class Status(models.TextChoices):
         PENDING = 'PENDING', 'Pending'

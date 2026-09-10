@@ -138,7 +138,7 @@ def connect_customer_device(request, customer, subscription):
     pretends success it can't back up  Section 36), or None if clean.
     """
     from django.utils import timezone
-    from .models import InternetSession, MikroTikRouter
+    from .models import InternetSession, MikroTikJob, MikroTikRouter
 
     if not subscription.mikrotik_username:
         subscription.mikrotik_username = f'sub{subscription.id}'
@@ -186,11 +186,33 @@ def connect_customer_device(request, customer, subscription):
 
     if router:
         try:
-            get_mikrotik_service(router).create_user(
+            job = get_mikrotik_service(router).create_user(
                 username=subscription.mikrotik_username,
                 password=subscription.mikrotik_username,
                 profile_name=subscription.package.name,
             )
+            # Creating the router user is asynchronous  the on-site agent
+            # only picks the job up on its next poll (every few seconds),
+            # not instantly. Without this wait, the browser could be
+            # handed login credentials for a user that doesn't exist on
+            # the router *yet*, and the auto-login iframe post would fail
+            # silently. So: hold the response briefly and give the agent
+            # a real chance to finish before we answer  bounded so a slow
+            # or offline agent can't hang the request forever.
+            if job:
+                import time
+                for _ in range(6):  # ~3s total
+                    job.refresh_from_db()
+                    if job.status != MikroTikJob.Status.PENDING:
+                        break
+                    time.sleep(0.5)
+                if job.status == MikroTikJob.Status.FAILED:
+                    warning = (f"We couldn't get you online automatically "
+                               f"({job.result_detail or 'router error'}). "
+                               f"Try reconnecting to the WiFi in a minute, or contact support.")
+                elif job.status == MikroTikJob.Status.PENDING:
+                    warning = ("Getting you online  this is taking a little longer than "
+                               "usual. You should be connected within a few more seconds.")
         except MikroTikConnectionError:
             warning = ("Your account is valid and your time is reserved, but we "
                        "couldn't reach the router to get you online just now. "
@@ -234,7 +256,7 @@ class RouterOSBackend(MikroTikBackend):
         return RouterStatus(connected=True, detail='Agent checked in recently.')
 
     def create_user(self, username: str, password: str, profile_name: str):
-        self._enqueue(
+        return self._enqueue(
             'CREATE_USER',
             {'username': username, 'password': password, 'profile_name': profile_name},
         )
@@ -262,6 +284,20 @@ class RouterOSBackend(MikroTikBackend):
 
     def set_session_timeout(self, username: str, timeout: str):
         self._enqueue('SET_SESSION_TIMEOUT', {'username': username, 'timeout': timeout})
+
+    def bypass_mac(self, mac_address: str, comment: str = ''):
+        """
+        Grants a device internet immediately, with no hotspot login form
+        involved  the agent adds it to /ip/hotspot/ip-binding as
+        'bypassed', so its traffic simply stops being intercepted. This
+        is what makes 'pay -> instantly online' possible: no credentials
+        to type, no second page, no cross-origin form post to the
+        router's (http, not https) login URL from our https site.
+        """
+        self._enqueue('BYPASS_MAC', {'mac_address': mac_address, 'comment': comment})
+
+    def unbypass_mac(self, mac_address: str):
+        self._enqueue('UNBYPASS_MAC', {'mac_address': mac_address})
 
     # These three are read-only "what does the router say right now"
     # queries. Since Django can't open a live socket to the router (see

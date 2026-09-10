@@ -25,6 +25,12 @@ class Payment(models.Model):
     package = models.ForeignKey('packages.InternetPackage', on_delete=models.PROTECT, related_name='payments')
 
     phone_number = models.CharField(max_length=20)
+    # Captured from the hotspot's redirect querystring at the moment the
+    # customer clicked "Pay" (see initiate_purchase). Carried through to
+    # mpesa_callback  which runs minutes later, server-to-server from
+    # Safaricom, with no browser/device context of its own  so THIS is
+    # the only place that knows which physical device to grant access to.
+    mac_address = models.CharField(max_length=17, blank=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
 
     # Daraja identifiers  CheckoutRequestID is unique so a duplicate

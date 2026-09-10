@@ -161,6 +161,28 @@ def run_job(api, job):
         users.update(**{'.id': uid, 'limit-bytes-total': '0', 'rate-limit': payload['rate_limit']})
         return 'bandwidth set'
 
+    if job_type == 'BYPASS_MAC':
+        bindings = api.path('ip', 'hotspot', 'ip-binding')
+        mac = payload['mac_address']
+        existing = next((r for r in bindings if r.get('mac-address') == mac), None)
+        if existing:
+            bindings.update(**{'.id': existing['.id'], 'type': 'bypassed',
+                                'comment': payload.get('comment', '')})
+        else:
+            bindings.add(**{'mac-address': mac, 'type': 'bypassed',
+                             'comment': payload.get('comment', '')})
+        return f'{mac} bypassed — online immediately'
+
+    if job_type == 'UNBYPASS_MAC':
+        bindings = api.path('ip', 'hotspot', 'ip-binding')
+        mac = payload['mac_address']
+        removed = 0
+        for row in list(bindings):
+            if row.get('mac-address') == mac:
+                bindings.remove(row['.id'])
+                removed += 1
+        return f'removed {removed} binding(s) for {mac}'
+
     if job_type == 'SET_SESSION_TIMEOUT':
         uid = _find_user_id(api, payload['username'])
         if not uid:

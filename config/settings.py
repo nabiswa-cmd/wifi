@@ -20,7 +20,7 @@ DEBUG = config('DJANGO_DEBUG', default=False, cast=bool)
 # attach one) — put the actual hostname(s) in the ALLOWED_HOSTS env var,
 # comma-separated, once you know them. '*' is a safe default to get you
 # deployed first, but tighten it once the real domain is live.
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())
 # Django 4+ requires the *scheme* here too, e.g.
 # CSRF_TRUSTED_ORIGINS=https://your-app.up.railway.app
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
@@ -168,7 +168,12 @@ INTERNAL_TASK_TOKEN = config('INTERNAL_TASK_TOKEN', default='')
 MIKROTIK_AGENT_API_KEY = config('MIKROTIK_AGENT_API_KEY', default='')
 
 LOGIN_URL = '/admin-portal/login/'
-SESSION_COOKIE_SECURE = False
-CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+# Railway (like most PaaS) terminates HTTPS at its edge and forwards your
+# app plain HTTP internally. Without this, Django doesn't know the
+# original request was secure, which silently breaks CSRF validation on
+# POST requests (they 403) even though the browser genuinely used HTTPS.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = 'DENY'

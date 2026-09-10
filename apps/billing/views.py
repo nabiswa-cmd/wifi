@@ -25,6 +25,7 @@ from django.urls import reverse
 from apps.customers.models import Customer
 from apps.packages.models import InternetPackage
 from apps.mikrotik.services import connect_customer_device
+from apps.mikrotik.models import InternetSession, MikroTikJob, MikroTikRouter
 from .models import Payment, Subscription
 from .utils import normalize_phone_number, extract_mpesa_code
 from . import mpesa
@@ -112,32 +113,51 @@ def payment_waiting(request, payment_id):
 
 
 def payment_status(request, payment_id):
-    """Polled by the modal's JS (Section 10 — status is always read from
+    """Polled by the modal's JS (Section 10  status is always read from
     the backend record, never assumed client-side).
 
-    On the first poll that sees SUCCESS, also enqueues the real MikroTik
-    connect for this device. This can only happen here (not in
-    mpesa_callback) because mac/ip only exist because the customer's own
-    browser is passing them along from the HotSpot redirect — Safaricom's
-    callback request has no idea which device is asking.
+    Once a payment is SUCCESS, this is also the trigger point for
+    actually creating the hotspot user and handing the browser back the
+    router's login URL + generated credentials, so the JS can auto-submit
+    them and the customer is online within seconds of paying  no second
+    manual login screen. Guarded by `already_connected` so a client that
+    keeps polling after success (defensive, shouldn't normally happen
+    since the JS stops once it sees SUCCESS) doesn't re-enqueue the
+    MikroTik job on every poll.
     """
     payment = get_object_or_404(Payment, pk=payment_id)
     response = {'status': payment.status, 'receipt': payment.mpesa_receipt_number}
 
-    if payment.status == Payment.Status.SUCCESS and hasattr(payment, 'subscription'):
-        subscription = payment.subscription
-        mac_address = request.GET.get('mac') or ''
-        if mac_address:
-            from apps.mikrotik.models import InternetSession
-            already_triggered = InternetSession.objects.filter(
-                subscription=subscription, mac_address=mac_address,
-            ).exists()
-            if not already_triggered:
-                connect_customer_device(request, payment.customer, subscription)
-        if subscription.mikrotik_username:
-            response['mikrotik_username'] = subscription.mikrotik_username
+    if payment.status == Payment.Status.SUCCESS:
+        subscription = getattr(payment, 'subscription', None)
+        if subscription:
+            router = MikroTikRouter.objects.filter(is_active=True).first()
+
+            def _router_confirmed():
+                if not router:
+                    return False
+                return MikroTikJob.objects.filter(
+                    router=router, job_type=MikroTikJob.JobType.CREATE_USER,
+                    payload__username=subscription.mikrotik_username,
+                    status=MikroTikJob.Status.DONE,
+                ).exists()
+
+            ready = _router_confirmed()
+            if not ready:
+                # connect_customer_device is safe to call repeatedly  it's
+                # idempotent on both the InternetSession row and the router
+                # user  and each call itself waits briefly for the agent,
+                # so this naturally becomes true within a poll or two.
+                warning = connect_customer_device(request, payment.customer, subscription)
+                if warning:
+                    response['warning'] = warning
+                ready = _router_confirmed()
+            if ready:
+                response['mikrotik_username'] = subscription.mikrotik_username
+                response['link_login'] = request.GET.get('link', '')
 
     return JsonResponse(response)
+
 def _parse_transaction_date(value):
     """Daraja sends TransactionDate as an int like 20240521123456."""
     try:
