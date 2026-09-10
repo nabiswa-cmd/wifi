@@ -42,3 +42,13 @@ class SubscriptionAdmin(admin.ModelAdmin):
     list_display = ('customer', 'package', 'status', 'activation_source', 'activation_time', 'expiry_time')
     list_filter = ('status', 'activation_source')
     search_fields = ('customer__full_name', 'customer__phone_number')
+
+
+
+    from django.contrib import admin
+from .models import MikroTikRouter, MikroTikProfile, InternetSession, MikroTikJob
+
+admin.site.register(MikroTikRouter)
+admin.site.register(MikroTikProfile)
+admin.site.register(InternetSession)
+admin.site.register(MikroTikJob)
