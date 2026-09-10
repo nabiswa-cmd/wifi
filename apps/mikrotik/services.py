@@ -191,14 +191,6 @@ def connect_customer_device(request, customer, subscription):
                 password=subscription.mikrotik_username,
                 profile_name=subscription.package.name,
             )
-            # Creating the router user is asynchronous  the on-site agent
-            # only picks the job up on its next poll (every few seconds),
-            # not instantly. Without this wait, the browser could be
-            # handed login credentials for a user that doesn't exist on
-            # the router *yet*, and the auto-login iframe post would fail
-            # silently. So: hold the response briefly and give the agent
-            # a real chance to finish before we answer  bounded so a slow
-            # or offline agent can't hang the request forever.
             if job:
                 import time
                 for _ in range(6):  # ~3s total
@@ -213,6 +205,25 @@ def connect_customer_device(request, customer, subscription):
                 elif job.status == MikroTikJob.Status.PENDING:
                     warning = ("Getting you online  this is taking a little longer than "
                                "usual. You should be connected within a few more seconds.")
+
+            # This is what actually grants access — direct MAC bypass on
+            # the router, no browser cooperation needed (unlike the
+            # hotspot-user login above, which depends on the phone's
+            # browser successfully posting to the router's plain-HTTP
+            # login page from our HTTPS site, and mobile browsers often
+            # silently block that). The hotspot user above still exists
+            # as a record and a session-timeout safety net.
+            if mac_address:
+                get_mikrotik_service(router).bypass_mac(
+                    mac_address,
+                    comment=f'sub{subscription.id} until {subscription.expiry_time}',
+                )
+            else:
+                warning = warning or (
+                    "We couldn't identify your device's MAC address, so we "
+                    "couldn't connect you automatically  reconnect to the WiFi "
+                    "and try again from the page it redirects you to."
+                )
         except MikroTikConnectionError:
             warning = ("Your account is valid and your time is reserved, but we "
                        "couldn't reach the router to get you online just now. "

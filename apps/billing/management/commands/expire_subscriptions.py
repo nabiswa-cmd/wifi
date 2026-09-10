@@ -45,16 +45,18 @@ class Command(BaseCommand):
                 if router:
                     try:
                         get_mikrotik_service(router).disable_user(sub.mikrotik_username)
+                        if session and session.mac_address:
+                            get_mikrotik_service(router).unbypass_mac(session.mac_address)
                     except MikroTikConnectionError as exc:
                         logger.warning(
-                            'Could not queue disable for subscription %s (%s): %s',
+                            'Could not queue disable/unbypass for subscription %s (%s): %s',
                             sub.id, sub.mikrotik_username, exc,
                         )
                 else:
                     logger.warning(
                         'Subscription %s expired but has no active session/router to '
-                        'target for disable_user — will only be caught by the router\'s '
-                        'own session-timeout, if one is set on the hotspot profile.',
+                        'target for disable_user/unbypass_mac — customer may stay '
+                        'connected until manually cut off.',
                         sub.id,
                     )
 
