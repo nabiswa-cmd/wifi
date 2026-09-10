@@ -147,6 +147,7 @@
   let currentPackageId = null;
   let pollTimer = null;
   let lastResultWasSuccess = false;
+  let lastLinkLogin = '';
   const POLL_INTERVAL_MS = 2500;
   const MAX_WAIT_MS = 90000; // give up politely after 90s, not stuck forever
 
@@ -257,6 +258,7 @@
       );
       const data = await res.json();
       if (data.status === 'SUCCESS') {
+        lastLinkLogin = data.link_login || '';
         if (data.link_login && data.mikrotik_username) {
           autoLoginToHotspot(data.link_login, data.mikrotik_username);
         }
@@ -332,7 +334,7 @@
     // `dst` field) — redirecting here too would race it off the page
     // before that login ever gets submitted, which is exactly the bug
     // that just caused "job succeeded, device never got online."
-    if (success && !linkLogin) {
+    if (success && !lastLinkLogin) {
       setTimeout(() => { window.location.href = SUCCESS_REDIRECT_URL; }, 4000);
     }
   }

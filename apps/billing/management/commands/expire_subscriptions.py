@@ -17,6 +17,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from apps.billing.models import Subscription
+from apps.mikrotik.models import InternetSession
 from apps.mikrotik.services import MikroTikConnectionError, get_mikrotik_service
 
 logger = logging.getLogger(__name__)
@@ -47,12 +48,7 @@ class Command(BaseCommand):
                         get_mikrotik_service(router).disable_user(sub.mikrotik_username)
                         if session and session.mac_address:
                             get_mikrotik_service(router).unbypass_mac(session.mac_address)
-                    except MikroTikConnectionError as exc:
-                        logger.warning(
-                            'Could not queue disable/unbypass for subscription %s (%s): %s',
-                            sub.id, sub.mikrotik_username, exc,
-                        )
-                else:
+v
                     logger.warning(
                         'Subscription %s expired but has no active session/router to '
                         'target for disable_user/unbypass_mac — customer may stay '

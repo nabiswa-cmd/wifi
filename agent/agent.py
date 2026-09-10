@@ -107,13 +107,15 @@ def run_job(api, job):
     active = _hotspot_active(api)
 
     if job_type == 'CREATE_USER':
+        mac = payload.get('mac_address', '')
         existing = _find_user_id(api, payload['username'])
         if existing:
             users.update(**{'.id': existing, 'password': payload['password'],
-                             'profile': payload['profile_name'], 'disabled': 'no'})
+                             'profile': payload['profile_name'], 'disabled': 'no',
+                             'mac-address': mac})
         else:
             users.add(name=payload['username'], password=payload['password'],
-                      profile=payload['profile_name'])
+                      profile=payload['profile_name'], **({'mac-address': mac} if mac else {}))
         return 'created/updated'
 
     if job_type == 'DISCONNECT_USER':

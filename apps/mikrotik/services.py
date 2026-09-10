@@ -38,7 +38,7 @@ class MikroTikBackend:
     def test_connection(self) -> RouterStatus:
         raise NotImplementedError
 
-    def create_user(self, username: str, password: str, profile_name: str):
+    def create_user(self, username: str, password: str, profile_name: str, mac_address: str = ''):
         raise NotImplementedError
 
     def update_user(self, username: str, **fields):
@@ -89,7 +89,7 @@ class NullMikroTikBackend(MikroTikBackend):
     def test_connection(self) -> RouterStatus:
         return RouterStatus(connected=False, detail='MikroTik not connected.')
 
-    def create_user(self, username: str, password: str, profile_name: str):
+    def create_user(self, username: str, password: str, profile_name: str, mac_address: str = ''):
         raise MikroTikConnectionError('MikroTik not connected.')
 
     def update_user(self, username: str, **fields):
@@ -140,11 +140,20 @@ def connect_customer_device(request, customer, subscription):
     from django.utils import timezone
     from .models import InternetSession, MikroTikJob, MikroTikRouter
 
-    if not subscription.mikrotik_username:
-        subscription.mikrotik_username = f'sub{subscription.id}'
-        subscription.save(update_fields=['mikrotik_username', 'updated_at'])
+    mac_address = (request.GET.get('mac') or request.POST.get('mac') or '').upper().replace('-', ':')
 
-    mac_address = request.GET.get('mac') or request.POST.get('mac') or ''
+    if not mac_address:
+        # login-by=mac needs a real MAC to bind the hotspot user to. If it's
+        # missing, the customer didn't arrive via the actual captive-portal
+        # redirect (e.g. bookmarked link) — fail loudly rather than create a
+        # username nothing will ever authenticate against.
+        return ("Your account is valid and your time is reserved, but we "
+                "couldn't detect your device's MAC address. Please reconnect "
+                "to the Wi-Fi hotspot and open the payment page again from there.")
+
+    if subscription.mikrotik_username != mac_address:
+        subscription.mikrotik_username = mac_address
+        subscription.save(update_fields=['mikrotik_username', 'updated_at'])
     ip_address = (
         request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
         or request.META.get('REMOTE_ADDR')
@@ -266,11 +275,11 @@ class RouterOSBackend(MikroTikBackend):
             return RouterStatus(connected=False, detail=f'Agent heartbeat is {int(age)}s old — agent may be offline.')
         return RouterStatus(connected=True, detail='Agent checked in recently.')
 
-    def create_user(self, username: str, password: str, profile_name: str):
-        return self._enqueue(
-            'CREATE_USER',
-            {'username': username, 'password': password, 'profile_name': profile_name},
-        )
+    def create_user(self, username: str, password: str, profile_name: str, mac_address: str = ''):
+        self._enqueue(
+        'CREATE_USER',
+        {'username': username, 'password': password, 'profile_name': profile_name, 'mac_address': mac_address},
+    )
 
     def disconnect_user(self, username: str):
         self._enqueue('DISCONNECT_USER', {'username': username})

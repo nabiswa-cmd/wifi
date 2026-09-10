@@ -9,9 +9,18 @@ def landing(request):
     """
     The captive-portal landing page (Section 9): shows active, database-driven
     packages. No prices/durations are ever hard-coded into the template.
+
+    When MikroTik's hotspot login.html redirects an unauthenticated device
+    here, it appends `?mac=<device mac>&link=<router's own login URL>` to
+    this page's URL. Those two values let connect_customer_device() bypass
+    this exact device by MAC once payment succeeds.
     """
     packages = InternetPackage.objects.filter(is_active=True).order_by('display_order')
-    return render(request, 'customers/landing.html', {'packages': packages})
+    return render(request, 'customers/landing.html', {
+        'packages': packages,
+        'hotspot_mac': request.GET.get('mac', ''),
+        'hotspot_link_login': request.GET.get('link', ''),
+    })
 
 
 def customer_login(request):
