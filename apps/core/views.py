@@ -1,11 +1,16 @@
 import csv
+import io
 
+from django.conf import settings
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
+from django.core.management import call_command
 from django.db.models import Sum, Count, Q
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 
 def admin_login(request):
@@ -108,3 +113,32 @@ def subscription_management(request):
     if status_param:
         qs = qs.filter(status=status_param)
     return render(request, 'core/subscriptions.html', {'subscriptions': qs[:200]})
+
+
+@csrf_exempt
+@require_POST
+def run_scheduled_tasks(request):
+    """
+    HTTP-triggerable equivalent of `worker.py`'s loop, for anyone using an
+    external scheduler (e.g. cron-job.org) instead of a Railway worker
+    service. Protected by INTERNAL_TASK_TOKEN — never call this without
+    it, it will happily expire subscriptions and disable customers on
+    every hit otherwise.
+
+    Auth: header  Authorization: Bearer <INTERNAL_TASK_TOKEN>
+    """
+    expected = settings.INTERNAL_TASK_TOKEN
+    provided = request.headers.get('Authorization', '')
+    if not expected or provided != f'Bearer {expected}':
+        return JsonResponse({'detail': 'Unauthorized'}, status=401)
+
+    results = {}
+    for name in ('expire_subscriptions', 'sync_mikrotik'):
+        buf = io.StringIO()
+        try:
+            call_command(name, stdout=buf)
+            results[name] = {'ok': True, 'output': buf.getvalue().strip()}
+        except Exception as exc:  # noqa: BLE001 — one command failing shouldn't skip the other
+            results[name] = {'ok': False, 'error': str(exc)}
+
+    return JsonResponse({'ran_at': timezone.now().isoformat(), 'results': results})

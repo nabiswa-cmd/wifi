@@ -13,6 +13,7 @@ from apps.customers.viewsets import CustomerViewSet
 from apps.billing.viewsets import PaymentViewSet, SubscriptionViewSet
 from apps.billing.views import mpesa_callback
 from apps.mikrotik.views import pending_jobs, complete_job, heartbeat
+from apps.core.views import run_scheduled_tasks
 
 router = DefaultRouter()
 router.register('packages', InternetPackageViewSet, basename='package')
@@ -38,6 +39,7 @@ urlpatterns = [
     path('mikrotik/jobs/pending/', pending_jobs),          # on-site agent polls this
     path('mikrotik/jobs/<int:job_id>/complete/', complete_job),
     path('mikrotik/heartbeat/', heartbeat),
+    path('internal/run-scheduled-tasks/', run_scheduled_tasks),  # cron-job.org / any external scheduler hits this
     path('reports/', not_yet_implemented),
     path('notifications/', not_yet_implemented),
     path('settings/', not_yet_implemented),
