@@ -1,42 +1,44 @@
 from django.contrib import admin
+from django.urls import reverse
 from django.utils.html import format_html
-from .models import MikroTikRouter, MikroTikProfile, InternetSession
-from .services import get_mikrotik_service
+from apps.billing.models import Payment, Subscription
 
 
-@admin.register(MikroTikRouter)
-class MikroTikRouterAdmin(admin.ModelAdmin):
-    list_display = ('name', 'host', 'api_port', 'is_active', 'status_badge', 'last_checked_at')
-    readonly_fields = ('last_connection_status', 'last_checked_at')
-    actions = ['test_connection']
+class SubscriptionInline(admin.StackedInline):
+    """
+    Everything you need to answer 'why didn't this customer get online'
+    without leaving the Payment page: the subscription it created, and a
+    direct link to that subscription's MikroTik jobs (status + the exact
+    error the agent reported, if any).
+    """
+    model = Subscription
+    fk_name = 'payment'
+    extra = 0
+    readonly_fields = ('customer', 'package', 'status', 'mikrotik_username',
+                        'activation_time', 'expiry_time', 'router_jobs_link')
+    fields = readonly_fields
+    can_delete = False
 
-    def status_badge(self, obj):
-        colors = {
-            'CONNECTED': '#3fb950', 'DISCONNECTED': '#8b949e', 'AUTH_FAILED': '#f85149',
-            'TIMEOUT': '#d29922', 'ERROR': '#f85149', 'UNKNOWN': '#8b949e',
-        }
-        color = colors.get(obj.last_connection_status, '#8b949e')
-        return format_html('<span style="color:{}">{}</span>', color, obj.get_last_connection_status_display())
-    status_badge.short_description = 'Status'
-
-    @admin.action(description='Test connection')
-    def test_connection(self, request, queryset):
-        from django.utils import timezone
-        for router in queryset:
-            status = get_mikrotik_service(router).test_connection()
-            router.last_connection_status = 'CONNECTED' if status.connected else 'DISCONNECTED'
-            router.last_checked_at = timezone.now()
-            router.save(update_fields=['last_connection_status', 'last_checked_at'])
-        self.message_user(request, 'Connection test complete  see status column.')
+    def router_jobs_link(self, obj):
+        if not obj.mikrotik_username:
+            return '—'
+        url = (reverse('admin:mikrotik_mikrotikjob_changelist')
+               + f'?q={obj.mikrotik_username}')
+        return format_html('<a href="{}">View MikroTik jobs for {}</a>', url, obj.mikrotik_username)
+    router_jobs_link.short_description = 'Router status'
 
 
-@admin.register(MikroTikProfile)
-class MikroTikProfileAdmin(admin.ModelAdmin):
-    list_display = ('profile_name', 'router', 'rate_limit', 'session_timeout')
-    list_filter = ('router',)
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ('customer', 'package', 'amount', 'status', 'mpesa_receipt_number', 'created_at')
+    list_filter = ('status', 'package')
+    search_fields = ('phone_number', 'checkout_request_id', 'mpesa_receipt_number', 'customer__full_name')
+    readonly_fields = ('checkout_request_id', 'merchant_request_id', 'raw_callback_payload')
+    inlines = [SubscriptionInline]
 
 
-@admin.register(InternetSession)
-class InternetSessionAdmin(admin.ModelAdmin):
-    list_display = ('customer', 'router', 'status', 'login_time', 'logout_time', 'bytes_downloaded')
-    list_filter = ('status', 'router')
+@admin.register(Subscription)
+class SubscriptionAdmin(admin.ModelAdmin):
+    list_display = ('customer', 'package', 'status', 'activation_source', 'activation_time', 'expiry_time')
+    list_filter = ('status', 'activation_source')
+    search_fields = ('customer__full_name', 'customer__phone_number')
