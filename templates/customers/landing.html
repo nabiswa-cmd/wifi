@@ -326,8 +326,13 @@
     resultTitle.textContent = title;
     resultMessage.textContent = message;
     showStep('result');
-    if (success) {
-      // Auto-redirect a few seconds after success, even if they don't click Done.
+    // Only auto-redirect off-site when this ISN'T a real captive-portal
+    // session. When linkLogin is present, the hotspot auto-login form
+    // submission is what navigates the browser next (via the router's own
+    // `dst` field) — redirecting here too would race it off the page
+    // before that login ever gets submitted, which is exactly the bug
+    // that just caused "job succeeded, device never got online."
+    if (success && !linkLogin) {
       setTimeout(() => { window.location.href = SUCCESS_REDIRECT_URL; }, 4000);
     }
   }
