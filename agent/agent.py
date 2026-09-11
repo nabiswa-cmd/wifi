@@ -57,8 +57,11 @@ ROUTER_USE_SSL = os.environ.get('MIKROTIK_USE_SSL', 'false').lower() == 'true'
 DJANGO_BASE_URL = os.environ['DJANGO_BASE_URL'].rstrip('/')  # e.g. https://your-app.up.railway.app
 AGENT_API_KEY = os.environ['MIKROTIK_AGENT_API_KEY']         # must match Django's setting of the same name
 
+# Only used as the backoff after an error now — the long-poll wait
+# below is what governs how quickly a new job gets picked up.
 POLL_INTERVAL = float(os.environ.get('AGENT_POLL_INTERVAL', '5'))
-HTTP_TIMEOUT = float(os.environ.get('AGENT_HTTP_TIMEOUT', '10'))
+LONG_POLL_WAIT = float(os.environ.get('AGENT_LONG_POLL_WAIT', '20'))
+HTTP_TIMEOUT = float(os.environ.get('AGENT_HTTP_TIMEOUT', LONG_POLL_WAIT + 10))
 
 HEADERS = {'Authorization': f'Bearer {AGENT_API_KEY}', 'Content-Type': 'application/json'}
 
@@ -197,7 +200,10 @@ def run_job(api, job):
 
 # --- Django HTTP helpers --------------------------------------------------
 def fetch_pending_jobs():
+    # wait= must stay comfortably under HTTP_TIMEOUT or every long-poll
+    # cycle looks like a timed-out request rather than "no jobs right now".
     resp = requests.get(f'{DJANGO_BASE_URL}/api/mikrotik/jobs/pending/',
+                         params={'wait': LONG_POLL_WAIT},
                          headers=HEADERS, timeout=HTTP_TIMEOUT)
     resp.raise_for_status()
     return resp.json().get('jobs', [])
@@ -266,13 +272,17 @@ def main():
         except (LibRouterosError, OSError) as exc:
             log.error('Router connection problem, will retry: %s', exc)
             api = None
+            time.sleep(POLL_INTERVAL)  # back off only on real errors
         except requests.RequestException as exc:
             log.error('Could not reach Django, will retry: %s', exc)
+            time.sleep(POLL_INTERVAL)
         except KeyboardInterrupt:
             log.info('Shutting down.')
             sys.exit(0)
-
-        time.sleep(POLL_INTERVAL)
+        # No sleep on the success path — fetch_pending_jobs() itself already
+        # blocked for up to LONG_POLL_WAIT seconds (or returned instantly
+        # because a job was already waiting), so looping straight back is
+        # what makes this near-real-time instead of a fixed 5s cadence.
 
 
 if __name__ == '__main__':

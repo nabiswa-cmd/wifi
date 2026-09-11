@@ -218,11 +218,22 @@ def connect_customer_device(request, customer, subscription):
         )
 
         if router:
+            mikrotik_profile = subscription.package.mikrotik_profile
+            if not mikrotik_profile or mikrotik_profile.router_id != router.id:
+                warning = (
+                    f"Your account is valid and your time is reserved, but the "
+                    f"\u201c{subscription.package.name}\u201d package has no MikroTik "
+                    f"profile configured for this router, so we couldn't create "
+                    f"your hotspot session. Set Package \u2192 MikroTik Profile in "
+                    f"admin, then reconnect."
+                )
+                job = None
             try:
-                job = get_mikrotik_service(router).create_user(
+                job = None if warning else get_mikrotik_service(router).create_user(
                     username=subscription.mikrotik_username,
                     password=subscription.mikrotik_username,
-                    profile_name=subscription.package.name,
+                    profile_name=mikrotik_profile.profile_name,
+                    mac_address=mac_address,
                 )
                 if job:
                     import time

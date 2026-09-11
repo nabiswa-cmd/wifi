@@ -261,7 +261,7 @@
           // Payment's done, router's still catching up (a second or two,
           // usually)   keep the waiting UI up but be honest about what's
           // actually happening instead of declaring success early.
-          statusText.textContent = 'Payment received   connecting your device…';
+          statusText.textContent = 'Payment received connecting your device in a second…';
           pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
         }
       } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {

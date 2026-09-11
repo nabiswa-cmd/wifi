@@ -23,7 +23,7 @@ def _authenticated(request) -> bool:
     return auth == f'Bearer {settings.MIKROTIK_AGENT_API_KEY}' and bool(settings.MIKROTIK_AGENT_API_KEY)
 
 
-@require_GET
+ @require_GET
 def pending_jobs(request):
     if not _authenticated(request):
         return JsonResponse({'detail': 'Unauthorized'}, status=401)
@@ -32,7 +32,23 @@ def pending_jobs(request):
     if not router:
         return JsonResponse({'jobs': []})
 
-    jobs = MikroTikJob.objects.filter(router=router, status=MikroTikJob.Status.PENDING).order_by('created_at')
+    # Long-poll: hold the connection open and check every 0.5s so a
+    # freshly-queued BYPASS_MAC is handed to the agent within a fraction
+    # of a second of being created, instead of waiting for the agent's
+    # next fixed interval. Capped and clamped so a misbehaving client
+    # can't hold a worker open indefinitely.
+    import time
+    wait_seconds = min(max(float(request.GET.get('wait', 20)), 0), 30)
+    deadline = time.monotonic() + wait_seconds
+    jobs = []
+    while True:
+        jobs = list(
+            MikroTikJob.objects.filter(router=router, status=MikroTikJob.Status.PENDING).order_by('created_at')
+        )
+        if jobs or time.monotonic() >= deadline:
+            break
+        time.sleep(0.5)
+
     return JsonResponse({
         'jobs': [
             {'id': j.id, 'job_type': j.job_type, 'payload': j.payload}
