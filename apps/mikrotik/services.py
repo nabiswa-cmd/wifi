@@ -71,12 +71,17 @@ class MikroTikBackend:
     def set_bandwidth(self, username: str, rate_limit: str):
         raise NotImplementedError
 
-    def set_session_timeout(self, username: str, timeout: str):
+     def set_session_timeout(self, username: str, timeout: str):
+        raise NotImplementedError
+
+    def bypass_mac(self, mac_address: str, comment: str = ''):
+        raise NotImplementedError
+
+    def unbypass_mac(self, mac_address: str):
         raise NotImplementedError
 
 
-class NullMikroTikBackend(MikroTikBackend):
-    """
+class NullMikroTikBackend(MikroTikBackend):    """
     Active backend until a physical router is configured and Phase 4 lands.
     Every method fails loudly and explicitly rather than pretending to
     succeed  billing must never assume Internet was granted just because
@@ -122,12 +127,17 @@ class NullMikroTikBackend(MikroTikBackend):
     def set_bandwidth(self, username: str, rate_limit: str):
         raise MikroTikConnectionError('MikroTik not connected.')
 
-    def set_session_timeout(self, username: str, timeout: str):
+     def set_session_timeout(self, username: str, timeout: str):
+        raise MikroTikConnectionError('MikroTik not connected.')
+
+    def bypass_mac(self, mac_address: str, comment: str = ''):
+        raise MikroTikConnectionError('MikroTik not connected.')
+
+    def unbypass_mac(self, mac_address: str):
         raise MikroTikConnectionError('MikroTik not connected.')
 
 
-def connect_customer_device(request, customer, subscription):
-    """
+def connect_customer_device(request, customer, subscription):    """
     The one place 'get this customer's current device online, and kick off
     whichever device was using this subscription before' lives  shared by
     every way a customer can get connected (M-Pesa reconnect, vouchers,
@@ -167,16 +177,28 @@ def connect_customer_device(request, customer, subscription):
         .exclude(mac_address=mac_address)
         .first()
     )
-    if previous_session:
+   if previous_session:
         if previous_session.router:
+            service = get_mikrotik_service(previous_session.router)
             try:
-                get_mikrotik_service(previous_session.router).disconnect_user(
-                    previous_session.mikrotik_username
-                )
+                service.disconnect_user(previous_session.mikrotik_username)
             except MikroTikConnectionError:
                 warning = ("Your old device couldn't be reached to disconnect it "
                            "automatically  it may still show as online until it "
                            "times out on its own.")
+            # disconnect_user only kills a hotspot-login session; the thing
+            # actually granting this device internet is its MAC bypass
+            # binding (see bypass_mac below), so that has to be revoked
+            # too or the old device just keeps free internet forever.
+            if previous_session.mac_address:
+                try:
+                    service.unbypass_mac(previous_session.mac_address)
+                except MikroTikConnectionError:
+                    warning = warning or (
+                        "Your old device's direct access couldn't be revoked "
+                        "automatically  it may still stay online until its "
+                        "session times out."
+                    )
         previous_session.status = InternetSession.Status.CLOSED
         previous_session.logout_time = timezone.now()
         previous_session.save(update_fields=['status', 'logout_time'])
