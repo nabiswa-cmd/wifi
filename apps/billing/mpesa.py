@@ -20,7 +20,7 @@ BASE_URLS = {
 
 class MpesaError(Exception):
     """Raised whenever Daraja rejects the auth request or the STK push
-    itself. Never raised for 'customer cancelled/entered wrong PIN' —
+    itself. Never raised for 'customer cancelled/entered wrong PIN'  
     that's a normal callback outcome, handled in views.mpesa_callback."""
 
 

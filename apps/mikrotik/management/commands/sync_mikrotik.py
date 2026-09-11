@@ -2,7 +2,7 @@
 Watchdog for the agent/router link. Two jobs:
 
 1. Mark routers DISCONNECTED if the on-site agent hasn't heartbeated
-   recently (the agent itself only ever reports CONNECTED — someone has
+   recently (the agent itself only ever reports CONNECTED   someone has
    to notice when it goes quiet).
 2. Re-queue MikroTikJob rows that have sat PENDING too long, which
    usually means the agent was down when they were created and needs a
@@ -44,7 +44,7 @@ class Command(BaseCommand):
                 router.save(update_fields=['last_connection_status'])
                 stale_count += 1
                 logger.warning(
-                    'Router %s marked DISCONNECTED — no agent heartbeat in %ds.',
+                    'Router %s marked DISCONNECTED   no agent heartbeat in %ds.',
                     router.name, int(age),
                 )
 
@@ -55,7 +55,7 @@ class Command(BaseCommand):
         stuck_count = stuck_jobs.count()
         if stuck_count:
             logger.warning(
-                '%d MikroTikJob(s) have been PENDING for over %d minutes — '
+                '%d MikroTikJob(s) have been PENDING for over %d minutes   '
                 'agent is likely offline. They will run automatically once '
                 'it reconnects; no action needed unless it stays down.',
                 stuck_count, STUCK_JOB_MINUTES,

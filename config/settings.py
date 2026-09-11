@@ -17,7 +17,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='insecure-dev-key-change-me')
 DEBUG = config('DJANGO_DEBUG', default=False, cast=bool)
 # Railway assigns you a *.up.railway.app domain (and your own domain if you
-# attach one) — put the actual hostname(s) in the ALLOWED_HOSTS env var,
+# attach one)   put the actual hostname(s) in the ALLOWED_HOSTS env var,
 # comma-separated, once you know them. '*' is a safe default to get you
 # deployed first, but tighten it once the real domain is live.
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())

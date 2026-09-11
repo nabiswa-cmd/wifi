@@ -69,7 +69,7 @@ class MikroTikJob(models.Model):
     A queued instruction for the on-site agent to execute against the
     real router over the LAN (see agent/agent.py). Django can never talk
     to the router directly (it's on Vercel, the router is on-site behind
-    NAT) — this table is the bridge. RouterOSBackend below only ever
+    NAT)   this table is the bridge. RouterOSBackend below only ever
     writes rows here; only the agent ever marks them DONE/FAILED.
     """
     class JobType(models.TextChoices):

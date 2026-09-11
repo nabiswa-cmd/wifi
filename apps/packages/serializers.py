@@ -10,7 +10,7 @@ class PackageProfileSerializer(serializers.ModelSerializer):
 
 class InternetPackageSerializer(serializers.ModelSerializer):
     """
-    Customer-facing shape. Never includes mikrotik_profile internals —
+    Customer-facing shape. Never includes mikrotik_profile internals  
     that mapping is staff-only (Section 15).
     """
     duration_unit_display = serializers.CharField(source='get_duration_unit_display', read_only=True)

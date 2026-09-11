@@ -3,7 +3,7 @@
 The "one always-on process" the README flags as the thing Vercel/Railway's
 request-driven web dyno can't do on its own. Run this as a SEPARATE
 Railway service (see Procfile's `worker:` line) alongside the `web:`
-service — same codebase, same DATABASE_URL, different process type.
+service   same codebase, same DATABASE_URL, different process type.
 
 Loops forever, calling the two management commands on an interval:
   - expire_subscriptions  (every EXPIRY_INTERVAL_SECONDS)

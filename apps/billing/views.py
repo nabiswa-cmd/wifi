@@ -177,7 +177,7 @@ def reconnect_by_code(request):
     their M-Pesa code here instead of paying again.
 
     Lives as a section at the bottom of the landing page (see
-    customers/landing.html#reconnect), alongside the voucher option —
+    customers/landing.html#reconnect), alongside the voucher option  
     both funnel into apps.mikrotik.services.connect_customer_device so
     the one-payment-one-device rule is enforced identically either way.
 

@@ -14,7 +14,7 @@
   <div class="card">
     <h3>Current Session</h3>
     {% if active_session %}
-      <p>{{ active_session.ip_address|default:"—" }}</p>
+      <p>{{ active_session.ip_address|default:" " }}</p>
       <p class="badge badge-info">Since {{ active_session.login_time }}</p>
     {% else %}
       <p>Not currently connected</p>

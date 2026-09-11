@@ -36,7 +36,7 @@ def _staff_required(user):
 def dashboard(request):
     """
     Section 20's KPI dashboard, now backed by real queries against billing
-    and customer data (Phase 2). Charts are left to Phase 5/reporting —
+    and customer data (Phase 2). Charts are left to Phase 5/reporting  
     the numeric cards are the load-bearing part for day-to-day ops.
     """
     from apps.customers.models import Customer
@@ -121,7 +121,7 @@ def run_scheduled_tasks(request):
     """
     HTTP-triggerable equivalent of `worker.py`'s loop, for anyone using an
     external scheduler (e.g. cron-job.org) instead of a Railway worker
-    service. Protected by INTERNAL_TASK_TOKEN — never call this without
+    service. Protected by INTERNAL_TASK_TOKEN   never call this without
     it, it will happily expire subscriptions and disable customers on
     every hit otherwise.
 
@@ -138,7 +138,7 @@ def run_scheduled_tasks(request):
         try:
             call_command(name, stdout=buf)
             results[name] = {'ok': True, 'output': buf.getvalue().strip()}
-        except Exception as exc:  # noqa: BLE001 — one command failing shouldn't skip the other
+        except Exception as exc:  # noqa: BLE001   one command failing shouldn't skip the other
             results[name] = {'ok': False, 'error': str(exc)}
 
     return JsonResponse({'ran_at': timezone.now().isoformat(), 'results': results})

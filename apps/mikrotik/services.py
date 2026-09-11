@@ -157,7 +157,7 @@ def connect_customer_device(request, customer, subscription):
         if not mac_address:
             # login-by=mac needs a real MAC to bind the hotspot user to. If it's
             # missing, the customer didn't arrive via the actual captive-portal
-            # redirect (e.g. bookmarked link) — fail loudly rather than create a
+            # redirect (e.g. bookmarked link)   fail loudly rather than create a
             # username nothing will ever authenticate against.
             return ("Your account is valid and your time is reserved, but we "
                     "couldn't detect your device's MAC address. Please reconnect "
@@ -239,7 +239,7 @@ def connect_customer_device(request, customer, subscription):
                         warning = ("Getting you online  this is taking a little longer than "
                                     "usual. You should be connected within a few more seconds.")
 
-                # This is what actually grants access — direct MAC bypass on
+                # This is what actually grants access   direct MAC bypass on
                 # the router, no browser cooperation needed (unlike the
                 # hotspot-user login above, which depends on the phone's
                 # browser successfully posting to the router's plain-HTTP
@@ -271,13 +271,13 @@ def connect_customer_device(request, customer, subscription):
 class RouterOSBackend(MikroTikBackend):
     """
     The real backend. Since Django (Vercel) and the router (on-site LAN)
-    can't talk directly, this never opens a socket to RouterOS itself —
+    can't talk directly, this never opens a socket to RouterOS itself  
     it writes a MikroTikJob row, which the on-site agent (agent/agent.py)
     picks up over HTTPS polling and executes on the LAN.
 
     Important honesty note (Section 36): a queued job is NOT a confirmed
     result. create_user()/disconnect_user() returning here only means
-    "Django has asked for this" — not "the router has done it yet". The
+    "Django has asked for this"   not "the router has done it yet". The
     agent reports back via the /api/mikrotik/jobs/<id>/complete/ endpoint,
     and test_connection() below only trusts a recent agent heartbeat, not
     the existence of a queued job.
@@ -296,7 +296,7 @@ class RouterOSBackend(MikroTikBackend):
             return RouterStatus(connected=False, detail='No heartbeat received from the on-site agent yet.')
         age = (timezone.now() - self.router.last_checked_at).total_seconds()
         if age > 60:
-            return RouterStatus(connected=False, detail=f'Agent heartbeat is {int(age)}s old — agent may be offline.')
+            return RouterStatus(connected=False, detail=f'Agent heartbeat is {int(age)}s old   agent may be offline.')
         return RouterStatus(connected=True, detail='Agent checked in recently.')
 
     def create_user(self, username: str, password: str, profile_name: str, mac_address: str = ''):
@@ -348,7 +348,7 @@ class RouterOSBackend(MikroTikBackend):
     # class docstring), they read the last snapshot the agent pushed on
     # its most recent heartbeat rather than blocking on a queued job.
     # If that snapshot is stale (agent offline), that's visible via
-    # test_connection()/get_router_status() — callers should check that
+    # test_connection()/get_router_status()   callers should check that
     # too rather than trusting this data blindly (Section 36).
     def get_active_users(self):
         return self.router.cached_active_users or []

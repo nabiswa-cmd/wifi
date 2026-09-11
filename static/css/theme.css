@@ -49,7 +49,7 @@
 html { scroll-behavior: smooth; }
 
 /* Make the native `hidden` attribute win even when a class on the same
-   element (e.g. .modal-overlay, .badge) sets its own `display` value —
+   element (e.g. .modal-overlay, .badge) sets its own `display` value  
    otherwise that display rule silently cancels the browser's hidden
    behavior and the element shows up before JS ever unhides it. */
 [hidden] { display: none !important; }

@@ -2,7 +2,7 @@
 
 This replaces the Vercel setup. Railway can run the two things Vercel
 couldn't: a persistent worker process (`worker.py`) and, if you ever want
-it, a straight Postgres add-on (though you can also keep Supabase — the
+it, a straight Postgres add-on (though you can also keep Supabase   the
 `DATABASE_URL` env var is all that matters, Railway doesn't care where
 Postgres lives).
 
@@ -15,7 +15,7 @@ message's file list is committed and pushed.
 
 1. https://railway.app → New Project → Deploy from GitHub repo → pick this repo.
 2. Railway auto-detects Python via `nixpacks.toml` / `requirements.txt` and
-   the `Procfile`. It will create one service by default — that's your
+   the `Procfile`. It will create one service by default   that's your
    `web` process (gunicorn).
 3. Add a **second service** from the same repo for the worker: New →
    GitHub Repo → same repo again → in that service's Settings → Deploy,
@@ -25,7 +25,7 @@ message's file list is committed and pushed.
 
 ## 3. Environment variables
 
-Set these on **both** services (web and worker) — Railway lets you share
+Set these on **both** services (web and worker)   Railway lets you share
 a variable group across services, which is worth doing since most of
 these are identical:
 
@@ -46,9 +46,9 @@ these are identical:
 | `MPESA_CALLBACK_URL` | `https://your-app.up.railway.app/api/mpesa/callback/` | Safaricom posts here |
 | `MPESA_ACCOUNT_TYPE` | `TILL` or `PAYBILL` | |
 | `INTERNAL_TASK_TOKEN` | (long random string) | only needed if you later expose the `/api/internal/...` HTTP variant instead of the worker |
-| `MIKROTIK_AGENT_API_KEY` | (long random string) | must match the on-site agent's `.env` — see `agent/README.md` |
+| `MIKROTIK_AGENT_API_KEY` | (long random string) | must match the on-site agent's `.env`   see `agent/README.md` |
 
-`PORT` is set automatically by Railway — don't set it yourself.
+`PORT` is set automatically by Railway   don't set it yourself.
 
 ## 4. First deploy
 
@@ -74,13 +74,13 @@ In your Daraja app config, set the callback URL to
 ## 6. Connect the RB941
 
 The web/worker services above are the cloud side. The router itself is on
-your local network and needs the on-site agent — that's a **separate**
+your local network and needs the on-site agent   that's a **separate**
 setup, on a **separate** always-on machine near the router. Full
 instructions: `agent/README.md`.
 
 ## 7. Vercel cleanup
 
-`vercel.json` is now unused — safe to delete, or leave it (Railway
+`vercel.json` is now unused   safe to delete, or leave it (Railway
 ignores it). If the Vercel project is still live, remove/disable it so
 you don't end up running the same app on both platforms with two
 different databases pointed at by mistake.

@@ -4,25 +4,25 @@ NABISWA WIFI on-site agent.
 
 Runs on a small always-on machine on the SAME LAN as the MikroTik router
 (a Raspberry Pi, an old laptop, a $5 VPS with a WireGuard tunnel into the
-LAN — anything that can reach the router's API port). Django itself never
+LAN   anything that can reach the router's API port). Django itself never
 opens a socket to the router (it's on Railway/Vercel, the router is
-behind NAT) — this script is the bridge:
+behind NAT)   this script is the bridge:
 
   1. Polls  GET  /api/mikrotik/jobs/pending/   for queued work
   2. Executes each job against the router over the RouterOS API
      (port 8728 plaintext, or 8729 if MIKROTIK_USE_SSL=true)
   3. Reports the result back with POST /api/mikrotik/jobs/<id>/complete/
   4. Sends a heartbeat (with a live user/session snapshot) every cycle to
-     POST /api/mikrotik/heartbeat/  so Django knows the agent — and by
-     extension the router — is actually reachable (Section 36: never
+     POST /api/mikrotik/heartbeat/  so Django knows the agent   and by
+     extension the router   is actually reachable (Section 36: never
      assume connected just because nothing has failed yet).
 
-Config comes entirely from environment variables — copy .env.example to
+Config comes entirely from environment variables   copy .env.example to
 .env and fill it in, or export the variables however your process
 supervisor wants.
 
 Requires: pip install -r agent/requirements.txt (librouteros + requests).
-This file intentionally has ZERO Django imports — it must be runnable
+This file intentionally has ZERO Django imports   it must be runnable
 on a bare Python 3 install on whatever box you point at the router.
 """
 import json
@@ -173,7 +173,7 @@ def run_job(api, job):
         else:
             bindings.add(**{'mac-address': mac, 'type': 'bypassed',
                              'comment': payload.get('comment', '')})
-        return f'{mac} bypassed — online immediately'
+        return f'{mac} bypassed   online immediately'
 
     if job_type == 'UNBYPASS_MAC':
         bindings = api.path('ip', 'hotspot', 'ip-binding')
@@ -242,7 +242,7 @@ def send_heartbeat(api):
 
 # --- Main loop -------------------------------------------------------------
 def main():
-    log.info('Starting NABISWA WIFI agent — router %s:%s, django %s',
+    log.info('Starting NABISWA WIFI agent   router %s:%s, django %s',
               ROUTER_HOST, ROUTER_PORT, DJANGO_BASE_URL)
     api = None
     while True:

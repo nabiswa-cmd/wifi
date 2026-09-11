@@ -256,12 +256,12 @@
       const data = await res.json();
       if (data.status === 'SUCCESS') {
         if (data.connected) {
-          showResult(true, "You're connected!", "Enjoy your Wi-Fi — no need to do anything else.");
+          showResult(true, "You're connected!", "Enjoy your Wi-Fi   no need to do anything else.");
         } else {
           // Payment's done, router's still catching up (a second or two,
-          // usually) — keep the waiting UI up but be honest about what's
+          // usually)   keep the waiting UI up but be honest about what's
           // actually happening instead of declaring success early.
-          statusText.textContent = 'Payment received — connecting your device…';
+          statusText.textContent = 'Payment received   connecting your device…';
           pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
         }
       } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {
@@ -352,7 +352,7 @@
         setReconnectStatus('loading', 'Connecting your device…');
         pollReconnectStatus(data.payment_id, Date.now());
       } catch (err) {
-        setReconnectStatus('error', 'Connection problem — check your internet and try again.');
+        setReconnectStatus('error', 'kindly click reconnect again atleast 3times ,sorry for that then wait u are connected fully... ');
         reconnectSubmitBtn.disabled = false;
       }
     });

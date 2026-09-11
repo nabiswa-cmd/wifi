@@ -56,7 +56,7 @@ class Command(BaseCommand):
             else:
                 logger.warning(
                     'Subscription %s expired but has no active session/router to '
-                    'target for disable_user/unbypass_mac — customer may stay '
+                    'target for disable_user/unbypass_mac   customer may stay '
                     'connected until manually cut off.',
                     sub.id,
                 )

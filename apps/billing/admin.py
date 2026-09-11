@@ -21,7 +21,7 @@ class SubscriptionInline(admin.StackedInline):
 
     def router_jobs_link(self, obj):
         if not obj.mikrotik_username:
-            return '—'
+            return ' '
         url = (reverse('admin:mikrotik_mikrotikjob_changelist')
                + f'?q={obj.mikrotik_username}')
         return format_html('<a href="{}">View MikroTik jobs for {}</a>', url, obj.mikrotik_username)
