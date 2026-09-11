@@ -157,6 +157,14 @@
   let pollTimer = null;
   const POLL_INTERVAL_MS = 2500;
   const MAX_WAIT_MS = 90000; // give up politely after 90s, not stuck forever
+  const HINT_AFTER_MS = 12000; // if still waiting this long, offer the M-Pesa code fallback
+
+  // Where to send the customer once they're actually online. Swap this
+  // for wherever you want — your site, WhatsApp, anything.
+  const SUCCESS_REDIRECT_URL = 'https://software-engineers.netlify.app/';
+  function redirectToSuccess() {
+    setTimeout(() => { window.location.href = SUCCESS_REDIRECT_URL; }, 2500);
+  }
 
   function showStep(step) {
     stepPhone.hidden = step !== 'phone';
@@ -256,12 +264,15 @@
       const data = await res.json();
       if (data.status === 'SUCCESS') {
         if (data.connected) {
-          showResult(true, "You're connected!", "Enjoy your Wi-Fi   no need to do anything else.");
+          showResult(true, "You're connected!", "Enjoy your Wi-Fi — taking you there now…");
+          redirectToSuccess();
         } else {
-          // Payment's done, router's still catching up (a second or two,
-          // usually)   keep the waiting UI up but be honest about what's
-          // actually happening instead of declaring success early.
-          statusText.textContent = 'Payment received connecting your device in a second…';
+          // Payment's done, router's still catching up   keep the waiting
+          // UI up, but past a certain point offer the manual fallback so
+          // the customer isn't just staring at a spinner with no options.
+          statusText.textContent = (Date.now() - startedAt > HINT_AFTER_MS)
+            ? 'Still connecting… you can also paste your M-Pesa code below to connect manually.'
+            : 'Payment received — connecting your device…';
           pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
         }
       } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {
@@ -314,8 +325,9 @@
       .then(res => res.json())
       .then(data => {
         if (data.connected) {
-          setReconnectStatus('success', 'Connected! Enjoy your Wi-Fi.');
+          setReconnectStatus('success', 'Connected! Taking you there now…');
           reconnectSubmitBtn.disabled = false;
+          redirectToSuccess();
         } else {
           setReconnectStatus('loading', 'Connecting your device…');
           reconnectPollTimer = setTimeout(() => pollReconnectStatus(paymentId, startedAt), POLL_INTERVAL_MS);
