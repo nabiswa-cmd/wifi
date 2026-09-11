@@ -60,7 +60,7 @@ AGENT_API_KEY = os.environ['MIKROTIK_AGENT_API_KEY']         # must match Django
 # Only used as the backoff after an error now — the long-poll wait
 # below is what governs how quickly a new job gets picked up.
 POLL_INTERVAL = float(os.environ.get('AGENT_POLL_INTERVAL', '5'))
-LONG_POLL_WAIT = float(os.environ.get('AGENT_LONG_POLL_WAIT', '20'))
+LONG_POLL_WAIT = float(os.environ.get('AGENT_LONG_POLL_WAIT', '8'))
 HTTP_TIMEOUT = float(os.environ.get('AGENT_HTTP_TIMEOUT', LONG_POLL_WAIT + 10))
 
 HEADERS = {'Authorization': f'Bearer {AGENT_API_KEY}', 'Content-Type': 'application/json'}

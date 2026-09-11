@@ -38,7 +38,7 @@ def pending_jobs(request):
     # of a second of being created, instead of waiting for the agent's
     # next fixed interval. Capped and clamped so a misbehaving client
     # can't hold a worker open indefinitely.
-    wait_seconds = min(max(float(request.GET.get('wait', 20)), 0), 30)
+    wait_seconds = min(max(float(request.GET.get('wait', 8)), 0), 10)
     deadline = time.monotonic() + wait_seconds
     jobs = []
     while True:
