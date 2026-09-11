@@ -235,21 +235,14 @@ def connect_customer_device(request, customer, subscription):
                     profile_name=mikrotik_profile.profile_name,
                     mac_address=mac_address,
                 )
-                if job:
-                    import time
-                    for _ in range(6):  # ~3s total
-                        job.refresh_from_db()
-                        if job.status != MikroTikJob.Status.PENDING:
-                            break
-                        time.sleep(0.5)
-                    if job.status == MikroTikJob.Status.FAILED:
-                        warning = (f"We couldn't get you online automatically "
-                                    f"({job.result_detail or 'router error'}). "
-                                    f"Try reconnecting to the WiFi in a minute, or contact support.")
-                    elif job.status == MikroTikJob.Status.PENDING:
-                        warning = ("Getting you online  this is taking a little longer than "
-                                    "usual. You should be connected within a few more seconds.")
-
+                if job and job.status == MikroTikJob.Status.FAILED:
+                    warning = (f"We couldn't get you online automatically "
+                               f"({job.result_detail or 'router error'}). "
+                               f"Try reconnecting to the WiFi in a minute, or contact support.")
+                # No blocking sleep here — the browser already polls every
+                # 2.5s (see landing.html), so this request just reports
+                # honestly right now and the *next* natural poll picks up
+                # DONE/FAILED once the agent's caught up.
                 # This is what actually grants access   direct MAC bypass on
                 # the router, no browser cooperation needed (unlike the
                 # hotspot-user login above, which depends on the phone's
