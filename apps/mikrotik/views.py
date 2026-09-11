@@ -1,13 +1,14 @@
 """
-Endpoints the on-site agent (agent/agent.py) calls   never the browser,
+Endpoints the on-site agent (agent/agent.py) calls — never the browser,
 never the customer-facing app. Authenticated with a single shared secret
 (MIKROTIK_AGENT_API_KEY), not staff login, since this is machine-to-
 machine and the agent has no user session.
 
-Only the agent may ever mark a MikroTikJob DONE/FAILED   Django itself
+Only the agent may ever mark a MikroTikJob DONE/FAILED — Django itself
 never assumes a job succeeded just because it was queued (Section 36).
 """
 import json
+import time
 
 from django.conf import settings
 from django.http import JsonResponse
@@ -23,7 +24,7 @@ def _authenticated(request) -> bool:
     return auth == f'Bearer {settings.MIKROTIK_AGENT_API_KEY}' and bool(settings.MIKROTIK_AGENT_API_KEY)
 
 
- @require_GET
+@require_GET
 def pending_jobs(request):
     if not _authenticated(request):
         return JsonResponse({'detail': 'Unauthorized'}, status=401)
@@ -37,7 +38,6 @@ def pending_jobs(request):
     # of a second of being created, instead of waiting for the agent's
     # next fixed interval. Capped and clamped so a misbehaving client
     # can't hold a worker open indefinitely.
-    import time
     wait_seconds = min(max(float(request.GET.get('wait', 20)), 0), 30)
     deadline = time.monotonic() + wait_seconds
     jobs = []
@@ -91,7 +91,7 @@ def heartbeat(request):
     Called by the on-site agent every poll cycle. Besides proving the
     agent is alive (used by test_connection()'s 60s staleness check),
     the agent may optionally attach its latest read of the router's
-    hotspot active-users/active-sessions tables   this is the only
+    hotspot active-users/active-sessions tables — this is the only
     place that live data enters Django, and it's always a snapshot,
     never treated as more current than `last_checked_at` implies.
     """
