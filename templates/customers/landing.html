@@ -104,11 +104,16 @@
     <p style="color:var(--color-text-muted);font-size:.85rem;margin-top:0;">
       Paste your M-Pesa code or the whole Mpesa message.
     </p>
-    <form method="post" action="{% url 'billing:reconnect' %}">
+    <form id="reconnect-form">
       {% csrf_token %}
-      <input type="text" name="code" placeholder="e.g. UFH3JT6LKQ or paste the whole SMS" required>
-      <button type="submit" class="btn">Reconnect</button>
+      <input type="text" id="reconnect-code-input" name="code" placeholder="e.g. UFH3JT6LKQ or paste the whole SMS" required>
+      <button type="submit" class="btn" id="reconnect-submit-btn">Reconnect</button>
     </form>
+    <div id="reconnect-status" hidden style="margin-top:12px;display:flex;align-items:center;gap:10px;">
+      <div class="spinner" id="reconnect-spinner" style="width:20px;height:20px;"></div>
+      <span id="reconnect-icon" hidden style="font-size:1.3rem;"></span>
+      <span id="reconnect-status-text" style="font-size:.9rem;"></span>
+    </div>
   </div>
 
 
@@ -251,7 +256,7 @@
       const data = await res.json();
       if (data.status === 'SUCCESS') {
         if (data.connected) {
-          showResult(true, "You're connected! 🎉", "Enjoy your Wi-Fi — no need to do anything else.");
+          showResult(true, "You're connected!", "Enjoy your Wi-Fi — no need to do anything else.");
         } else {
           // Payment's done, router's still catching up (a second or two,
           // usually) — keep the waiting UI up but be honest about what's
@@ -270,22 +275,87 @@
   }
 
   function showResult(success, title, message) {
-    lastResultWasSuccess = success;
     resultIcon.innerHTML = success
-      ? '<div class="result-icon result-success">✓</div>'
-      : '<div class="result-icon result-failure">✕</div>';
+      ? '<div class="result-icon result-success"><i class="bi bi-check-lg"></i></div>'
+      : '<div class="result-icon result-failure"><i class="bi bi-x-lg"></i></div>';
     resultTitle.textContent = title;
     resultMessage.textContent = message;
     showStep('result');
-    // Only auto-redirect off-site when this ISN'T a real captive-portal
-    // session. When linkLogin is present, the hotspot auto-login form
-    // submission is what navigates the browser next (via the router's own
-    // `dst` field) — redirecting here too would race it off the page
-    // before that login ever gets submitted, which is exactly the bug
-    // that just caused "job succeeded, device never got online."
-    if (success && !lastLinkLogin) {
-      setTimeout(() => { window.location.href = SUCCESS_REDIRECT_URL; }, 4000);
+  }
+
+  // --- Reconnect by M-Pesa code ---
+  const reconnectForm = document.getElementById('reconnect-form');
+  const reconnectStatus = document.getElementById('reconnect-status');
+  const reconnectSpinner = document.getElementById('reconnect-spinner');
+  const reconnectIcon = document.getElementById('reconnect-icon');
+  const reconnectStatusText = document.getElementById('reconnect-status-text');
+  const reconnectSubmitBtn = document.getElementById('reconnect-submit-btn');
+  let reconnectPollTimer = null;
+
+  function setReconnectStatus(mode, text) {
+    reconnectStatus.hidden = false;
+    reconnectSpinner.hidden = mode !== 'loading';
+    reconnectIcon.hidden = mode === 'loading';
+    if (mode === 'success') {
+      reconnectIcon.innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--color-primary);"></i>';
+    } else if (mode === 'error') {
+      reconnectIcon.innerHTML = '<i class="bi bi-x-circle-fill" style="color:#c0392b;"></i>';
     }
+    reconnectStatusText.textContent = text;
+  }
+
+  function pollReconnectStatus(paymentId, startedAt) {
+    if (Date.now() - startedAt > MAX_WAIT_MS) {
+      setReconnectStatus('error', "Taking longer than expected  you're reconnected, but check your device in a moment.");
+      reconnectSubmitBtn.disabled = false;
+      return;
+    }
+    fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.connected) {
+          setReconnectStatus('success', 'Connected! Enjoy your Wi-Fi.');
+          reconnectSubmitBtn.disabled = false;
+        } else {
+          setReconnectStatus('loading', 'Connecting your device…');
+          reconnectPollTimer = setTimeout(() => pollReconnectStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+        }
+      })
+      .catch(() => {
+        reconnectPollTimer = setTimeout(() => pollReconnectStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+      });
+  }
+
+  if (reconnectForm) {
+    reconnectForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (reconnectPollTimer) clearTimeout(reconnectPollTimer);
+      reconnectSubmitBtn.disabled = true;
+      setReconnectStatus('loading', 'Checking your payment…');
+
+      try {
+        const res = await fetch('{% url "billing:reconnect" %}', {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: `code=${encodeURIComponent(document.getElementById('reconnect-code-input').value)}&mac=${encodeURIComponent(HOTSPOT_MAC)}`,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setReconnectStatus('error', data.error || 'Could not reconnect. Please try again.');
+          reconnectSubmitBtn.disabled = false;
+          return;
+        }
+        setReconnectStatus('loading', 'Connecting your device…');
+        pollReconnectStatus(data.payment_id, Date.now());
+      } catch (err) {
+        setReconnectStatus('error', 'Connection problem — check your internet and try again.');
+        reconnectSubmitBtn.disabled = false;
+      }
+    });
   }
 })();
 </script>
