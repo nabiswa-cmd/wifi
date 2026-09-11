@@ -72,10 +72,17 @@
 
     <!-- Step 3: result -->
     <div id="modal-step-result" hidden style="text-align:center;">
-      <div id="modal-result-icon"></div>
+      <div id="modal-result-icon" style="margin:0 auto 8px;"></div>
+    <style>
+      .result-icon{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;animation:pop-in .35s cubic-bezier(.34,1.56,.64,1);}
+      .result-success{background:var(--color-primary-soft);color:var(--color-primary);border:3px solid var(--color-primary);}
+      .result-failure{background:#f8d7da;color:#c0392b;border:3px solid #c0392b;}
+      @keyframes pop-in{0%{transform:scale(0);opacity:0;}70%{transform:scale(1.1);}100%{transform:scale(1);opacity:1;}}
+      @media (max-width:480px){#buy-modal-overlay .card{width:92vw;padding:20px;}}
+    </style>
       <h3 id="modal-result-title"></h3>
       <p id="modal-result-message" style="color:var(--color-text-muted);"></p>
-      <button class="btn" id="modal-close-btn">Done</button>
+      <button class="btn" id="modal-close-btn">Great, thanks!</button>
     </div>
 
   </div>
@@ -137,23 +144,14 @@
   const resultMessage = document.getElementById('modal-result-message');
   const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
-  // Passed through by the router's login.html redirect (see
-  // router/login.html) — mac identifies this device to the hotspot, and
-  // link is the router's own login URL this device can auto-submit
-  // credentials to once payment succeeds, to skip a second manual login.
+  // Passed through by the router's login.html redirect  mac identifies
+  // this device so the agent knows which MAC to bypass on the router.
   const HOTSPOT_MAC = '{{ hotspot_mac|escapejs }}';
-  const HOTSPOT_LINK_LOGIN = '{{ hotspot_link_login|escapejs }}';
 
   let currentPackageId = null;
   let pollTimer = null;
-  let lastResultWasSuccess = false;
-  let lastLinkLogin = '';
   const POLL_INTERVAL_MS = 2500;
   const MAX_WAIT_MS = 90000; // give up politely after 90s, not stuck forever
-
-  // Where to send the customer once they're connected. Swap this for your
-  // real portfolio/site URL.
-  const SUCCESS_REDIRECT_URL = 'https://software-engineers.netlify.app/';
 
   function showStep(step) {
     stepPhone.hidden = step !== 'phone';
@@ -202,13 +200,7 @@
   });
   document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
   document.getElementById('modal-waiting-cancel-btn').addEventListener('click', closeModal);
-  document.getElementById('modal-close-btn').addEventListener('click', () => {
-    if (lastResultWasSuccess) {
-      window.location.href = SUCCESS_REDIRECT_URL;
-    } else {
-      closeModal();
-    }
-  });
+  document.getElementById('modal-close-btn').addEventListener('click', closeModal);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
 
   document.getElementById('modal-pay-btn').addEventListener('click', async () => {
@@ -254,25 +246,19 @@
     }
     try {
       const res = await fetch(
-        `/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}&link=${encodeURIComponent(HOTSPOT_LINK_LOGIN)}`
+        `/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`
       );
       const data = await res.json();
       if (data.status === 'SUCCESS') {
-        lastLinkLogin = data.link_login || '';
-        if (data.link_login && data.mikrotik_username) {
-          autoLoginToHotspot(data.link_login, data.mikrotik_username);
+        if (data.connected) {
+          showResult(true, "You're connected! 🎉", "Enjoy your Wi-Fi — no need to do anything else.");
+        } else {
+          // Payment's done, router's still catching up (a second or two,
+          // usually) — keep the waiting UI up but be honest about what's
+          // actually happening instead of declaring success early.
+          statusText.textContent = 'Payment received — connecting your device…';
+          pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
         }
-        showResult(
-          true, 'Payment successful ',
-          data.link_login
-            ? "You're connected  enjoy your Wi-Fi."
-            // No link_login means this device didn't arrive via the
-            // hotspot redirect (e.g. testing directly on the site) —
-            // auto-login has nothing to submit to, so say so honestly
-            // instead of claiming a connection we can't back up.
-            : `Your package is active. If you're not online in a few seconds, ` +
-              `reconnect to the WiFi and log in with username and password: ${data.mikrotik_username}`
-        );
       } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {
         showResult(false, 'Payment not completed', 'The transaction was ' + data.status.toLowerCase() + '. Try again.');
       } else {
@@ -280,43 +266,6 @@
       }
     } catch (err) {
       pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
-    }
-  }
-
-  // Standard MikroTik hotspot auto-login pattern: POST username/password
-  // straight to the router's own login URL. This always works even while
-  // "unauthenticated" because the router itself (not the wider internet)
-  // is always reachable on the LAN — walled garden only restricts
-  // everything else. Submits into a hidden iframe so the success screen
-  // stays visible instead of navigating the whole tab away.
-  function autoLoginToHotspot(loginUrl, username) {
-    try {
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.name = 'hotspot-auto-login';
-      document.body.appendChild(iframe);
-
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = loginUrl;
-      form.target = 'hotspot-auto-login';
-
-      const addField = (name, value) => {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = name;
-        input.value = value;
-        form.appendChild(input);
-      };
-      addField('username', username);
-      addField('password', username); // password == username by design (see connect_customer_device)
-
-      document.body.appendChild(form);
-      form.submit();
-      setTimeout(() => { form.remove(); iframe.remove(); }, 5000);
-    } catch (err) {
-      // Non-fatal  the fallback message in showResult already tells the
-      // customer their credentials in case auto-login silently failed.
     }
   }
 

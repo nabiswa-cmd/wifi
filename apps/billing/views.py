@@ -132,18 +132,25 @@ def payment_status(request, payment_id):
         subscription = getattr(payment, 'subscription', None)
         if subscription:
             router = MikroTikRouter.objects.filter(is_active=True).first()
+            mac_address = (request.GET.get('mac') or '').upper().replace('-', ':')
 
-            def _router_confirmed():
-                if not router:
+            def _actually_online():
+                # BYPASS_MAC is what actually grants internet now  not
+                # CREATE_USER, which only creates a record/fallback
+                # account. Checking the wrong job type here was why the
+                # frontend used to report "connected" before the
+                # customer's device could really reach anything, or
+                # vice versa.
+                if not router or not mac_address:
                     return False
                 return MikroTikJob.objects.filter(
-                    router=router, job_type=MikroTikJob.JobType.CREATE_USER,
-                    payload__username=subscription.mikrotik_username,
+                    router=router, job_type=MikroTikJob.JobType.BYPASS_MAC,
+                    payload__mac_address=mac_address,
                     status=MikroTikJob.Status.DONE,
                 ).exists()
 
-            ready = _router_confirmed()
-            if not ready:
+            connected = _actually_online()
+            if not connected:
                 # connect_customer_device is safe to call repeatedly  it's
                 # idempotent on both the InternetSession row and the router
                 # user  and each call itself waits briefly for the agent,
@@ -151,10 +158,8 @@ def payment_status(request, payment_id):
                 warning = connect_customer_device(request, payment.customer, subscription)
                 if warning:
                     response['warning'] = warning
-                ready = _router_confirmed()
-            if ready:
-                response['mikrotik_username'] = subscription.mikrotik_username
-                response['link_login'] = request.GET.get('link', '')
+                connected = _actually_online()
+            response['connected'] = connected
 
     return JsonResponse(response)
 
