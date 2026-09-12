@@ -129,7 +129,19 @@ def payment_status(request, payment_id):
     response = {'status': payment.status, 'receipt': payment.mpesa_receipt_number}
 
     if payment.status == Payment.Status.SUCCESS:
-        subscription = getattr(payment, 'subscription', None)
+        # payment.subscription only exists when THIS payment created a
+        # brand-new Subscription row. Under the default EXTEND renewal
+        # behavior (Subscription.activate_from_payment), a repeat
+        # purchase reuses the customer's existing subscription and only
+        # bumps its expiry_time  it never re-points the OneToOne back to
+        # this new payment. Without this fallback, every renewal payment
+        # would succeed on M-Pesa but silently never enqueue a MikroTik
+        # job, because this whole block would just be skipped.
+        subscription = getattr(payment, 'subscription', None) or Subscription.objects.filter(
+            customer=payment.customer,
+            status=Subscription.Status.ACTIVE,
+            expiry_time__gt=timezone.now(),
+        ).order_by('-expiry_time').first()
         if subscription:
             router = MikroTikRouter.objects.filter(is_active=True).first()
             mac_address = (request.GET.get('mac') or '').upper().replace('-', ':')
@@ -202,17 +214,21 @@ def reconnect_by_code(request):
         .select_related('customer', 'package', 'subscription')
         .first()
     )
-    # payment.subscription is a *reverse* one-to-one accessor  if no
-    # Subscription row was ever created for this payment, touching the
-    # attribute directly raises RelatedObjectDoesNotExist instead of
-    # returning None. hasattr() is safe here because Django deliberately
-    # makes that exception also an AttributeError, so hasattr correctly
-    # reports False rather than letting it bubble up as a 500.
-    if not payment or not hasattr(payment, 'subscription'):
+    if not payment:
         messages.error(request, "We couldn't find a completed payment with that code. Double-check it and try again.")
         return redirect(back)
 
-    subscription = payment.subscription
+    # Same EXTEND-renewal gap as payment_status above  a payment that
+    # renewed an existing subscription was never linked back to it, so
+    # fall back to the customer's current active subscription.
+    subscription = getattr(payment, 'subscription', None) or Subscription.objects.filter(
+        customer=payment.customer,
+        status=Subscription.Status.ACTIVE,
+        expiry_time__gt=timezone.now(),
+    ).order_by('-expiry_time').first()
+    if not subscription:
+        messages.error(request, "We couldn't find an active package for that code. Double-check it and try again.")
+        return redirect(back)
     if not subscription.is_currently_entitled():
         messages.error(request, "This code's session has expired  that package's time has run out.")
         return redirect(back)
