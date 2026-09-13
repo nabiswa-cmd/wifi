@@ -152,7 +152,15 @@ def connect_customer_device(request, customer, subscription):
         from django.utils import timezone
         from .models import InternetSession, MikroTikJob, MikroTikRouter
 
-        mac_address = (request.GET.get('mac') or request.POST.get('mac') or '').upper().replace('-', ':')
+        raw_mac = (request.GET.get('mac') or request.POST.get('mac') or '').upper().replace('-', ':')
+        # Validate before this ever reaches a .save()  a malformed, missing,
+        # or oversized value here used to crash straight through to a
+        # DataError at the database (mac_address is CharField(max_length=17)),
+        # turning one bad request (a bot, a stray bookmark, garbage in the
+        # querystring) into a 500 for a real paying customer. Treat anything
+        # that isn't a genuine AA:BB:CC:DD:EE:FF as "no MAC provided" instead.
+        import re
+        mac_address = raw_mac if re.fullmatch(r'([0-9A-F]{2}:){5}[0-9A-F]{2}', raw_mac) else ''
 
         if not mac_address:
             # login-by=mac needs a real MAC to bind the hotspot user to. If it's
@@ -304,10 +312,10 @@ class RouterOSBackend(MikroTikBackend):
         return RouterStatus(connected=True, detail='Agent checked in recently.')
 
     def create_user(self, username: str, password: str, profile_name: str, mac_address: str = ''):
-        self._enqueue(
-        'CREATE_USER',
-        {'username': username, 'password': password, 'profile_name': profile_name, 'mac_address': mac_address},
-    )
+        return self._enqueue(
+            'CREATE_USER',
+            {'username': username, 'password': password, 'profile_name': profile_name, 'mac_address': mac_address},
+        )
 
     def disconnect_user(self, username: str):
         self._enqueue('DISCONNECT_USER', {'username': username})
