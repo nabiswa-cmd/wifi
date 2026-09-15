@@ -12,7 +12,7 @@ from django.utils import timezone
 from apps.billing.models import Subscription
 from apps.billing.utils import normalize_phone_number
 from apps.customers.models import Customer
-from apps.mikrotik.services import connect_customer_device
+from apps.mikrotik.services import connect_payment_device
 from .models import Voucher
 
 

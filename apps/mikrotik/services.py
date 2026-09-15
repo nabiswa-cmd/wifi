@@ -138,42 +138,60 @@ class NullMikroTikBackend(MikroTikBackend):
         raise MikroTikConnectionError('MikroTik not connected.')
 
 
-def connect_customer_device(request, customer, subscription):
-        """
-            The one place 'get this customer's current device online, and kick off
-            whichever device was using this subscription before' lives  shared by
-            every way a customer can get connected (M-Pesa reconnect, vouchers,
-            and eventually manual/login accounts), so the one-payment-one-device
-            rule is enforced identically no matter which door they came through.
-    
-            Returns a warning string if the router couldn't be reached (never
-            pretends success it can't back up  Section 36), or None if clean.
-        """
-        from django.utils import timezone
-        from .models import InternetSession, MikroTikJob, MikroTikRouter
+def connect_payment_device(request, payment):
+    """
+    THE ownership boundary is the Payment, not the Subscription or the
+    Customer (Section 9 of the connection-architecture spec). A
+    Subscription can be shared by several renewal payments under the
+    default EXTEND behavior, so using it for device identity let one
+    payment's reconnect silently kick off a DIFFERENT payment's device.
+    payment.mac_address is the single source of truth for "which device
+    currently owns this specific M-Pesa code" — read before this call to
+    get the OLD device, written at the end to record the NEW one.
 
-        raw_mac = (request.GET.get('mac') or request.POST.get('mac') or '').upper().replace('-', ':')
-        # Validate before this ever reaches a .save()  a malformed, missing,
-        # or oversized value here used to crash straight through to a
-        # DataError at the database (mac_address is CharField(max_length=17)),
-        # turning one bad request (a bot, a stray bookmark, garbage in the
-        # querystring) into a 500 for a real paying customer. Treat anything
-        # that isn't a genuine AA:BB:CC:DD:EE:FF as "no MAC provided" instead.
-        import re
-        mac_address = raw_mac if re.fullmatch(r'([0-9A-F]{2}:){5}[0-9A-F]{2}', raw_mac) else ''
+    Three cases, matched exactly to the spec:
+      A) old_mac blank            -> just bypass new_mac
+      B) old_mac == new_mac       -> re-assert bypass (idempotent, no unbypass)
+      C) old_mac != new_mac       -> unbypass old_mac, bypass new_mac
 
-        if not mac_address:
-            # login-by=mac needs a real MAC to bind the hotspot user to. If it's
-            # missing, the customer didn't arrive via the actual captive-portal
-            # redirect (e.g. bookmarked link)   fail loudly rather than create a
-            # username nothing will ever authenticate against.
-            return ("Your account is valid and your time is reserved, but we "
-                    "couldn't detect your device's MAC address. Please reconnect "
-                    "to the Wi-Fi hotspot and open the payment page again from there.")
+    Never touches another payment's mac_address or session — the old_mac
+    compared here came from THIS payment's own row, so it cannot belong
+    to anyone else's payment by construction.
 
-        if subscription.mikrotik_username != mac_address:
-            subscription.mikrotik_username = mac_address
+    Returns a warning string if the router couldn't be reached (never
+    pretends success it can't back up — Section 5), or None if clean.
+    """
+    from django.db import transaction
+    from django.utils import timezone
+    from apps.billing.models import Subscription
+    from .models import InternetSession, MikroTikJob, MikroTikRouter
+
+    raw_mac = (request.GET.get('mac') or request.POST.get('mac') or '').upper().replace('-', ':')
+    import re
+    new_mac = raw_mac if re.fullmatch(r'([0-9A-F]{2}:){5}[0-9A-F]{2}', raw_mac) else ''
+
+    if not new_mac:
+        return ("Your account is valid and your time is reserved, but we "
+                "couldn't detect your device's MAC address. Please reconnect "
+                "to the Wi-Fi hotspot and open the payment page again from there.")
+
+    # select_for_update serializes concurrent requests for THIS payment
+    # only (Section 27) — a row-level lock, so a simultaneous reconnect
+    # on a DIFFERENT payment is never blocked by this.
+    with transaction.atomic():
+        payment = type(payment).objects.select_for_update().get(pk=payment.pk)
+        old_mac = payment.mac_address
+
+        subscription = getattr(payment, 'subscription', None) or Subscription.objects.filter(
+            customer=payment.customer, status=Subscription.Status.ACTIVE, expiry_time__gt=timezone.now(),
+        ).order_by('-expiry_time').first()
+        if not subscription:
+            return "Your account is valid, but no active package was found to attach this device to."
+
+        if subscription.mikrotik_username != new_mac:
+            subscription.mikrotik_username = new_mac
             subscription.save(update_fields=['mikrotik_username', 'updated_at'])
+
         ip_address = (
             request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
             or request.META.get('REMOTE_ADDR')
@@ -181,49 +199,41 @@ def connect_customer_device(request, customer, subscription):
         router = MikroTikRouter.objects.filter(is_active=True).first()
         warning = None
 
-        previous_session = (
-            InternetSession.objects
-            .filter(subscription=subscription, status=InternetSession.Status.ACTIVE)
-            .exclude(mac_address=mac_address)
-            .first()
-        )
-        if previous_session:
-            if previous_session.router:
-                service = get_mikrotik_service(previous_session.router)
+        if old_mac and old_mac != new_mac:
+            # Case C: switching devices on THIS payment only. old_mac came
+            # from payment.mac_address, so it can never belong to a
+            # different payment (Section 9).
+            old_session = InternetSession.objects.filter(
+                payment=payment, mac_address=old_mac, status=InternetSession.Status.ACTIVE,
+            ).first()
+            if router:
+                service = get_mikrotik_service(router)
                 try:
-                    service.disconnect_user(previous_session.mikrotik_username)
+                    service.unbypass_mac(old_mac)
+                    service.disconnect_user(old_mac)
                 except MikroTikConnectionError:
                     warning = ("Your old device couldn't be reached to disconnect it "
-                                "automatically  it may still show as online until it "
-                                "times out on its own.")
-                # disconnect_user only kills a hotspot-login session; the thing
-                # actually granting this device internet is its MAC bypass
-                # binding (see bypass_mac below), so that has to be revoked
-                # too or the old device just keeps free internet forever.
-                if previous_session.mac_address:
-                    try:
-                        service.unbypass_mac(previous_session.mac_address)
-                    except MikroTikConnectionError:
-                        warning = warning or (
-                            "Your old device's direct access couldn't be revoked "
-                            "automatically  it may still stay online until its "
-                            "session times out."
-                        )
-            previous_session.status = InternetSession.Status.CLOSED
-            previous_session.logout_time = timezone.now()
-            previous_session.save(update_fields=['status', 'logout_time'])
+                               "automatically — it may still show as online until it "
+                               "times out on its own.")
+            if old_session:
+                old_session.status = InternetSession.Status.CLOSED
+                old_session.logout_time = timezone.now()
+                old_session.save(update_fields=['status', 'logout_time'])
+        # Case A (old_mac blank) and Case B (old_mac == new_mac) both fall
+        # through to here with nothing removed — exactly per spec.
 
         InternetSession.objects.update_or_create(
-            subscription=subscription, mac_address=mac_address,
+            payment=payment, mac_address=new_mac,
             defaults={
-                'customer': customer,
-                'router': router,
-                'ip_address': ip_address,
-                'status': InternetSession.Status.ACTIVE,
-                'login_time': timezone.now(),
-                'mikrotik_username': subscription.mikrotik_username,
+                'customer': payment.customer, 'subscription': subscription, 'router': router,
+                'ip_address': ip_address, 'status': InternetSession.Status.ACTIVE,
+                'login_time': timezone.now(), 'mikrotik_username': new_mac,
             },
         )
+
+        if payment.mac_address != new_mac:
+            payment.mac_address = new_mac
+            payment.save(update_fields=['mac_address', 'updated_at'])
 
         if router:
             mikrotik_profile = subscription.package.mikrotik_profile
@@ -231,54 +241,35 @@ def connect_customer_device(request, customer, subscription):
                 warning = (
                     f"Your account is valid and your time is reserved, but the "
                     f"\u201c{subscription.package.name}\u201d package has no MikroTik "
-                    f"profile configured for this router, so we couldn't create "
-                    f"your hotspot session. Set Package \u2192 MikroTik Profile in "
-                    f"admin, then reconnect."
+                    f"profile configured for this router. Set Package \u2192 MikroTik "
+                    f"Profile in admin, then reconnect."
                 )
-                job = None
-            try:
-                job = None if warning else get_mikrotik_service(router).create_user(
-                    username=subscription.mikrotik_username,
-                    password=subscription.mikrotik_username,
-                    profile_name=mikrotik_profile.profile_name,
-                    mac_address=mac_address,
-                )
-                if job and job.status == MikroTikJob.Status.FAILED:
-                    warning = (f"We couldn't get you online automatically "
-                               f"({job.result_detail or 'router error'}). "
-                               f"Try reconnecting to the WiFi in a minute, or contact support.")
-                # No blocking sleep here — the browser already polls every
-                # 2.5s (see landing.html), so this request just reports
-                # honestly right now and the *next* natural poll picks up
-                # DONE/FAILED once the agent's caught up.
-                # This is what actually grants access   direct MAC bypass on
-                # the router, no browser cooperation needed (unlike the
-                # hotspot-user login above, which depends on the phone's
-                # browser successfully posting to the router's plain-HTTP
-                # login page from our HTTPS site, and mobile browsers often
-                # silently block that). The hotspot user above still exists
-                # as a record and a session-timeout safety net.
-                if mac_address:
+            else:
+                try:
+                    job = get_mikrotik_service(router).create_user(
+                        username=new_mac, password=new_mac,
+                        profile_name=mikrotik_profile.profile_name, mac_address=new_mac,
+                    )
+                    if job and job.status == MikroTikJob.Status.FAILED:
+                        warning = (f"We couldn't get you online automatically "
+                                   f"({job.result_detail or 'router error'}). "
+                                   f"Try reconnecting to the WiFi in a minute, or contact support.")
+                    # BYPASS_MAC is the operation that actually grants internet
+                    # (Section 4) — always (re-)asserted, idempotent on the
+                    # agent side, this is what makes Case B's "ensure bypass
+                    # is present" work with zero extra logic here.
                     get_mikrotik_service(router).bypass_mac(
-                        mac_address,
-                        comment=f'sub{subscription.id} until {subscription.expiry_time}',
+                        new_mac, comment=f'payment{payment.id} until {subscription.expiry_time}',
                     )
-                else:
-                    warning = warning or (
-                        "We couldn't identify your device's MAC address, so we "
-                        "couldn't connect you automatically  reconnect to the WiFi "
-                        "and try again from the page it redirects you to."
-                    )
-            except MikroTikConnectionError:
-                warning = ("Your account is valid and your time is reserved, but we "
-                            "couldn't reach the router to get you online just now. "
-                            "Try again in a minute, or contact support.")
+                except MikroTikConnectionError:
+                    warning = ("Your account is valid and your time is reserved, but we "
+                               "couldn't reach the router to get you online just now. "
+                               "Try again in a minute, or contact support.")
         else:
             warning = ("Your account is valid and your time is reserved, but no router "
-                        "is configured yet, so we can't get you online automatically.")
+                       "is configured yet, so we can't get you online automatically.")
 
         return warning
-
 
 class RouterOSBackend(MikroTikBackend):
     """

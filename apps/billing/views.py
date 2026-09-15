@@ -24,7 +24,7 @@ from django.urls import reverse
 
 from apps.customers.models import Customer
 from apps.packages.models import InternetPackage
-from apps.mikrotik.services import connect_customer_device
+from apps.mikrotik.services import connect_payment_device
 from apps.mikrotik.models import InternetSession, MikroTikJob, MikroTikRouter
 from .models import Payment, Subscription
 from .utils import normalize_phone_number, extract_mpesa_code
@@ -163,16 +163,15 @@ def payment_status(request, payment_id):
 
             connected = _actually_online()
             if not connected:
-                # connect_customer_device is safe to call repeatedly  it's
+                # connect_payment_device is safe to call repeatedly — it's
                 # idempotent on both the InternetSession row and the router
-                # user  and each call itself waits briefly for the agent,
-                # so this naturally becomes true within a poll or two.
-                warning = connect_customer_device(request, payment.customer, subscription)
+                # binding — so this naturally becomes true within a poll or
+                # two, without ever touching a DIFFERENT payment's device.
+                warning = connect_payment_device(request, payment)
                 if warning:
                     response['warning'] = warning
                 connected = _actually_online()
             response['connected'] = connected
-
     return JsonResponse(response)
 
 def _parse_transaction_date(value):
@@ -233,7 +232,7 @@ def reconnect_by_code(request):
     if not subscription.is_currently_entitled():
         return fail("This code's session has expired  that package's time has run out.")
 
-    warning = connect_customer_device(request, payment.customer, subscription)
+    warning = connect_payment_device(request, payment)
 
     if ajax:
         return JsonResponse({'success': True, 'payment_id': payment.id, 'warning': warning})

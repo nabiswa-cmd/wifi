@@ -39,32 +39,34 @@ class Command(BaseCommand):
             sub.save(update_fields=['status', 'updated_at'])
             count += 1
 
-            session = sub.sessions.filter(status=InternetSession.Status.ACTIVE).select_related('router').first()
-            router = session.router if session else None
-
-            if router:
-                try:
-                    if sub.mikrotik_username:
-                        get_mikrotik_service(router).disable_user(sub.mikrotik_username)
-                    if session and session.mac_address:
-                        get_mikrotik_service(router).unbypass_mac(session.mac_address)
-                except MikroTikConnectionError as exc:
-                    logger.warning(
-                        'Could not queue disable/unbypass for subscription %s (%s): %s',
-                        sub.id, sub.mikrotik_username, exc,
-                    )
-            else:
+            # A subscription's pooled time can be shared by SEVERAL
+            # different payments (EXTEND renewal) — connect_payment_device
+            # now lets each one run its own simultaneous device. When the
+            # shared pool runs out, ALL of them lose access together, not
+            # just whichever one this used to grab with .first().
+            sessions = list(
+                sub.sessions.filter(status=InternetSession.Status.ACTIVE).select_related('router')
+            )
+            if not sessions:
                 logger.warning(
-                    'Subscription %s expired but has no active session/router to '
-                    'target for disable_user/unbypass_mac   customer may stay '
-                    'connected until manually cut off.',
+                    'Subscription %s expired but has no active session to cut off — '
+                    'customer(s) may stay connected until manually disconnected.',
                     sub.id,
                 )
 
-            # Close the DB record regardless of whether the router-side calls
-            # above succeeded  this is the audit trail: when this device was
-            # connected and disconnected, independent of live router state.
-            if session:
+            for session in sessions:
+                router = session.router
+                if router and session.mac_address:
+                    try:
+                        get_mikrotik_service(router).disable_user(session.mac_address)
+                        get_mikrotik_service(router).unbypass_mac(session.mac_address)
+                    except MikroTikConnectionError as exc:
+                        logger.warning(
+                            'Could not queue disable/unbypass for subscription %s, '
+                            'device %s: %s', sub.id, session.mac_address, exc,
+                        )
+                # Close the DB record regardless of router-call success —
+                # this is the audit trail, independent of live router state.
                 session.status = InternetSession.Status.CLOSED
                 session.logout_time = now
                 session.save(update_fields=['status', 'logout_time'])
