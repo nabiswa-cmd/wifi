@@ -18,8 +18,70 @@
   <div class="card"><h3>Expired Customers</h3><p class="price">{{ expired_customers }}</p></div>
   <div class="card"><h3>Today's Sessions</h3><p class="price">{{ todays_sessions }}</p></div>
 </div>
-<p style="padding:0 20px; color:var(--color-text-muted);">
-  Revenue/growth charts are added in the reporting phase (Section 23)  these cards already
-  reflect real data from the billing models.
-</p>
+<div class="grid" style="grid-template-columns: 1fr 1fr;">
+  <div class="card">
+    <h3>Revenue - last 14 days</h3>
+    <canvas id="revenueChart" height="220"></canvas>
+  </div>
+  <div class="card">
+    <h3>Connections - last 14 days</h3>
+    <canvas id="sessionsChart" height="220"></canvas>
+  </div>
+</div>
+
+{{ chart_labels|json_script:"chart-labels" }}
+{{ chart_revenue|json_script:"chart-revenue" }}
+{{ chart_sessions|json_script:"chart-sessions" }}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script>
+  const chartLabels = JSON.parse(document.getElementById('chart-labels').textContent);
+  const chartRevenue = JSON.parse(document.getElementById('chart-revenue').textContent);
+  const chartSessions = JSON.parse(document.getElementById('chart-sessions').textContent);
+
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const gridColor = cssVar('--color-border');
+  const textColor = cssVar('--color-text-muted');
+
+  new Chart(document.getElementById('revenueChart'), {
+    type: 'line',
+    data: {
+      labels: chartLabels,
+      datasets: [{
+        label: 'Revenue ({{ branding.currency }})',
+        data: chartRevenue,
+        borderColor: cssVar('--color-primary'),
+        backgroundColor: cssVar('--color-primary'),
+        tension: 0.25,
+        fill: false,
+      }],
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+      },
+      plugins: { legend: { labels: { color: textColor } } },
+    },
+  });
+
+  new Chart(document.getElementById('sessionsChart'), {
+    type: 'bar',
+    data: {
+      labels: chartLabels,
+      datasets: [{
+        label: 'Devices connected',
+        data: chartSessions,
+        backgroundColor: cssVar('--color-secondary'),
+      }],
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+      },
+      plugins: { legend: { labels: { color: textColor } } },
+    },
+  });
+</script>
 {% endblock %}

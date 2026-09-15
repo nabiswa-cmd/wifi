@@ -31,14 +31,14 @@ def admin_login(request):
 def _staff_required(user):
     return user.is_authenticated and getattr(user, 'is_staff_account', False)
 
-
 @login_required(login_url='core:admin_login')
 def dashboard(request):
     """
-    Section 20's KPI dashboard, now backed by real queries against billing
-    and customer data (Phase 2). Charts are left to Phase 5/reporting  
-    the numeric cards are the load-bearing part for day-to-day ops.
+    Section 20's KPI dashboard, backed by real queries against billing
+    and customer data. The reporting-phase charts (Section 23) are now
+    built in too — revenue and connection activity over the last 14 days.
     """
+    from datetime import timedelta
     from apps.customers.models import Customer
     from apps.billing.models import Payment, Subscription
     from apps.mikrotik.models import InternetSession
@@ -47,6 +47,21 @@ def dashboard(request):
 
     payments_today = Payment.objects.filter(created_at__date=today)
     revenue_today = payments_today.filter(status=Payment.Status.SUCCESS).aggregate(total=Sum('amount'))['total'] or 0
+
+    # Last 14 days, oldest first, for the two trend charts below.
+    chart_days = [today - timedelta(days=i) for i in range(13, -1, -1)]
+    revenue_by_day = {
+        row['created_at__date']: row['total']
+        for row in Payment.objects.filter(
+            status=Payment.Status.SUCCESS, created_at__date__gte=chart_days[0],
+        ).values('created_at__date').annotate(total=Sum('amount'))
+    }
+    sessions_by_day = {
+        row['login_time__date']: row['count']
+        for row in InternetSession.objects.filter(
+            login_time__date__gte=chart_days[0],
+        ).values('login_time__date').annotate(count=Count('id'))
+    }
 
     context = {
         'total_customers': Customer.objects.count(),
@@ -64,9 +79,11 @@ def dashboard(request):
         'pending_payments': payments_today.filter(status=Payment.Status.PENDING).count(),
         'active_packages': Subscription.objects.filter(status=Subscription.Status.ACTIVE).count(),
         'todays_sessions': InternetSession.objects.filter(login_time__date=today).count(),
+        'chart_labels': [d.strftime('%d %b') for d in chart_days],
+        'chart_revenue': [float(revenue_by_day.get(d, 0)) for d in chart_days],
+        'chart_sessions': [sessions_by_day.get(d, 0) for d in chart_days],
     }
     return render(request, 'core/dashboard.html', context)
-
 
 @login_required(login_url='core:admin_login')
 def payment_management(request):
