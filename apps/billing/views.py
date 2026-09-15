@@ -163,9 +163,9 @@ def payment_status(request, payment_id):
 
             connected = _actually_online()
             if not connected:
-                # connect_payment_device is safe to call repeatedly — it's
+                # connect_payment_device is safe to call repeatedly  it's
                 # idempotent on both the InternetSession row and the router
-                # binding — so this naturally becomes true within a poll or
+                # binding  so this naturally becomes true within a poll or
                 # two, without ever touching a DIFFERENT payment's device.
                 warning = connect_payment_device(request, payment)
                 if warning:

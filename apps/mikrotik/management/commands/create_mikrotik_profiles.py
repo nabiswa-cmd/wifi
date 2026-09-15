@@ -2,7 +2,7 @@
 One-shot loader for the router-side hotspot user profiles you've already
 created with /ip hotspot user profile add. Creates the matching
 MikroTikProfile row for each, and auto-links any InternetPackage whose
-duration lines up exactly and unambiguously — anything else is left for
+duration lines up exactly and unambiguously  anything else is left for
 you to assign by hand in admin (Section 15: never guess a mapping).
 
 Usage:
@@ -85,6 +85,6 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'\n{linked} package(s) linked automatically.'))
         if skipped:
             self.stdout.write(self.style.WARNING(
-                f"Couldn't auto-match (no profile with that exact duration) — "
+                f"Couldn't auto-match (no profile with that exact duration)  "
                 f"set these manually in admin: {', '.join(skipped)}"
             ))

@@ -29,7 +29,7 @@ class SubscriptionInline(admin.StackedInline):
 class PaymentAdmin(admin.ModelAdmin):
     """
     Search by M-Pesa code, phone, or name to find a payment someone's
-    messaged you about, tick it, then run "Reconnect selected" — pushes
+    messaged you about, tick it, then run "Reconnect selected"  pushes
     a fresh BYPASS_MAC via connect_payment_device using the MAC already
     on file for THIS payment (payment-scoped, so this can never
     accidentally touch a different payment's device).
@@ -62,7 +62,7 @@ class PaymentAdmin(admin.ModelAdmin):
                 skipped.append(f'#{payment.id}: payment not successful')
                 continue
             if not payment.mac_address:
-                skipped.append(f'#{payment.id}: no MAC on file — never connected via the hotspot')
+                skipped.append(f'#{payment.id}: no MAC on file  never connected via the hotspot')
                 continue
             sub = getattr(payment, 'subscription', None)
             if not sub or not sub.is_currently_entitled():
@@ -73,7 +73,7 @@ class PaymentAdmin(admin.ModelAdmin):
             (skipped.append(f'#{payment.id}: {warning}') if warning else None)
             done += warning is None
         if done:
-            self.message_user(request, f'{done} device(s) re-queued — check MikroTikJob shortly for BYPASS_MAC status.')
+            self.message_user(request, f'{done} device(s) re-queued  check MikroTikJob shortly for BYPASS_MAC status.')
         if skipped:
             self.message_user(request, 'Skipped: ' + '; '.join(skipped), level='WARNING')
 

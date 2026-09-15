@@ -57,7 +57,7 @@ ROUTER_USE_SSL = os.environ.get('MIKROTIK_USE_SSL', 'false').lower() == 'true'
 DJANGO_BASE_URL = os.environ['DJANGO_BASE_URL'].rstrip('/')  # e.g. https://your-app.up.railway.app
 AGENT_API_KEY = os.environ['MIKROTIK_AGENT_API_KEY']         # must match Django's setting of the same name
 
-# Only used as the backoff after an error now — the long-poll wait
+# Only used as the backoff after an error now  the long-poll wait
 # below is what governs how quickly a new job gets picked up.
 POLL_INTERVAL = float(os.environ.get('AGENT_POLL_INTERVAL', '5'))
 LONG_POLL_WAIT = float(os.environ.get('AGENT_LONG_POLL_WAIT', '8'))
@@ -279,7 +279,7 @@ def main():
         except KeyboardInterrupt:
             log.info('Shutting down.')
             sys.exit(0)
-        # No sleep on the success path — fetch_pending_jobs() itself already
+        # No sleep on the success path  fetch_pending_jobs() itself already
         # blocked for up to LONG_POLL_WAIT seconds (or returned instantly
         # because a job was already waiting), so looping straight back is
         # what makes this near-real-time instead of a fixed 5s cadence.

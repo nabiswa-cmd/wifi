@@ -146,7 +146,7 @@ def connect_payment_device(request, payment):
     default EXTEND behavior, so using it for device identity let one
     payment's reconnect silently kick off a DIFFERENT payment's device.
     payment.mac_address is the single source of truth for "which device
-    currently owns this specific M-Pesa code" — read before this call to
+    currently owns this specific M-Pesa code"  read before this call to
     get the OLD device, written at the end to record the NEW one.
 
     Three cases, matched exactly to the spec:
@@ -154,12 +154,12 @@ def connect_payment_device(request, payment):
       B) old_mac == new_mac       -> re-assert bypass (idempotent, no unbypass)
       C) old_mac != new_mac       -> unbypass old_mac, bypass new_mac
 
-    Never touches another payment's mac_address or session — the old_mac
+    Never touches another payment's mac_address or session  the old_mac
     compared here came from THIS payment's own row, so it cannot belong
     to anyone else's payment by construction.
 
     Returns a warning string if the router couldn't be reached (never
-    pretends success it can't back up — Section 5), or None if clean.
+    pretends success it can't back up  Section 5), or None if clean.
     """
     from django.db import transaction
     from django.utils import timezone
@@ -176,7 +176,7 @@ def connect_payment_device(request, payment):
                 "to the Wi-Fi hotspot and open the payment page again from there.")
 
     # select_for_update serializes concurrent requests for THIS payment
-    # only (Section 27) — a row-level lock, so a simultaneous reconnect
+    # only (Section 27)  a row-level lock, so a simultaneous reconnect
     # on a DIFFERENT payment is never blocked by this.
     with transaction.atomic():
         payment = type(payment).objects.select_for_update().get(pk=payment.pk)
@@ -213,14 +213,14 @@ def connect_payment_device(request, payment):
                     service.disconnect_user(old_mac)
                 except MikroTikConnectionError:
                     warning = ("Your old device couldn't be reached to disconnect it "
-                               "automatically — it may still show as online until it "
+                               "automatically  it may still show as online until it "
                                "times out on its own.")
             if old_session:
                 old_session.status = InternetSession.Status.CLOSED
                 old_session.logout_time = timezone.now()
                 old_session.save(update_fields=['status', 'logout_time'])
         # Case A (old_mac blank) and Case B (old_mac == new_mac) both fall
-        # through to here with nothing removed — exactly per spec.
+        # through to here with nothing removed  exactly per spec.
 
         InternetSession.objects.update_or_create(
             payment=payment, mac_address=new_mac,
@@ -255,7 +255,7 @@ def connect_payment_device(request, payment):
                                    f"({job.result_detail or 'router error'}). "
                                    f"Try reconnecting to the WiFi in a minute, or contact support.")
                     # BYPASS_MAC is the operation that actually grants internet
-                    # (Section 4) — always (re-)asserted, idempotent on the
+                    # (Section 4)  always (re-)asserted, idempotent on the
                     # agent side, this is what makes Case B's "ensure bypass
                     # is present" work with zero extra logic here.
                     get_mikrotik_service(router).bypass_mac(

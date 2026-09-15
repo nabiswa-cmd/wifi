@@ -118,7 +118,7 @@ class InternetSession(models.Model):
     subscription = models.ForeignKey(
         'billing.Subscription', on_delete=models.SET_NULL, null=True, blank=True, related_name='sessions'
     )
-    # The actual ownership boundary for "whose device is this" — a
+    # The actual ownership boundary for "whose device is this"  a
     # Subscription can be shared by several renewal payments (EXTEND
     # behavior), so it's NOT safe to use for device scoping. A specific
     # Payment always belongs to exactly one M-Pesa code.

@@ -40,7 +40,7 @@ class Command(BaseCommand):
             count += 1
 
             # A subscription's pooled time can be shared by SEVERAL
-            # different payments (EXTEND renewal) — connect_payment_device
+            # different payments (EXTEND renewal)  connect_payment_device
             # now lets each one run its own simultaneous device. When the
             # shared pool runs out, ALL of them lose access together, not
             # just whichever one this used to grab with .first().
@@ -49,7 +49,7 @@ class Command(BaseCommand):
             )
             if not sessions:
                 logger.warning(
-                    'Subscription %s expired but has no active session to cut off — '
+                    'Subscription %s expired but has no active session to cut off  '
                     'customer(s) may stay connected until manually disconnected.',
                     sub.id,
                 )

@@ -9,7 +9,7 @@
   </div>
   <p style="color:var(--color-text-muted);">{{ branding.portal_message }}</p>
   <p style="font-size:.85rem; color:var(--color-primary); font-weight:600;">
-    Already paid but not online? Scroll down and paste your M-Pesa code to connect — no need to pay again.
+    Already paid but not online? Scroll down and paste your M-Pesa code to connect  no need to pay again.
   </p>
   <p style="font-size:.85rem;">
     Already paid, or have a voucher? <a href="#reconnect">Get connected </a>
@@ -163,7 +163,7 @@
   const HINT_AFTER_MS = 12000; // if still waiting this long, offer the M-Pesa code fallback
 
   // Where to send the customer once they're actually online. Swap this
-  // for wherever you want — your site, WhatsApp, anything.
+  // for wherever you want  your site, WhatsApp, anything.
   const SUCCESS_REDIRECT_URL = 'https://software-engineers.netlify.app/';
   function redirectToSuccess() {
     setTimeout(() => { window.location.href = SUCCESS_REDIRECT_URL; }, 2500);
@@ -268,7 +268,7 @@
       const data = await res.json();
       if (data.status === 'SUCCESS') {
         if (data.connected) {
-          showResult(true, "You're connected!", "Enjoy your Wi-Fi — taking you there now…");
+          showResult(true, "You're connected!", "Enjoy your Wi-Fi  taking you there now…");
           redirectToSuccess();
         } else {
           // Payment's done, router's still catching up   keep the waiting
@@ -276,7 +276,7 @@
           // the customer isn't just staring at a spinner with no options.
           statusText.textContent = (Date.now() - startedAt > HINT_AFTER_MS)
             ? 'Still connecting… you can also paste your M-Pesa code below to connect manually.'
-            : 'Payment received — connecting your device…';
+            : 'Payment received  connecting your device…';
           pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
         }
       } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {
