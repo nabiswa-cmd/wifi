@@ -16,18 +16,18 @@ from apps.packages.models import InternetPackage
 
 # name, session_timeout (RouterOS format), shared_users, duration in minutes
 PROFILES = [
-    ('30mins',    '30m', 1, 30),
-    ('1 Hour',    '1h',  1, 60),
-    ('3 Hours',   '3h',  1, 180),
-    ('6 Hours',   '6h',  1, 360),
-    ('12 Hours',  '12h', 1, 720),
-    ('24 Hours',  '1d',  2, 1440),
-    ('2 days',    '2d',  1, 2880),
-    ('3 Days',    '3d',  2, 4320),
-    ('5days',     '5d',  1, 7200),
-    ('7 Days',    '7d',  1, 10080),
-    ('15 Days',   '15d', 1, 21600),
-    ('30 Days',   '30d', 2, 43200),
+    ('30 Minutes', '30m', 1, 30),
+    ('1 Hour',     '1h',  1, 60),
+    ('3 Hours',    '3h',  1, 180),
+    ('6 Hours',    '6h',  1, 360),
+    ('12 Hours',   '12h', 1, 720),
+    ('24 Hours',   '1d',  2, 1440),
+    ('2 Days',     '2d',  1, 2880),
+    ('3 Days',     '3d',  2, 4320),
+    ('5 Days',     '5d',  1, 7200),
+    ('7 Days',     '7d',  1, 10080),
+    ('15 Days',    '15d', 1, 21600),
+    ('30 Days',    '30d', 2, 43200),
 ]
 
 
