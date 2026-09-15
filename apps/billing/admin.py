@@ -1,10 +1,30 @@
 from django.contrib import admin
 from django.test import RequestFactory
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.html import format_html
 
 from apps.mikrotik.services import connect_payment_device
 from .models import Payment, Subscription
+
+
+def _resolve_subscription(payment):
+    """
+    payment.subscription (the direct OneToOne) only exists for the ONE
+    payment that originally created a Subscription row. Under the
+    default EXTEND renewal behavior, every later top-up/renewal payment
+    for the same customer shares that same Subscription without ever
+    getting its own link — so checking the direct FK alone makes every
+    renewal payment look like it has no subscription at all, when its
+    money in fact correctly extended the real one. This mirrors the
+    fallback already used in billing/views.py (payment_status,
+    reconnect_by_code).
+    """
+    return getattr(payment, 'subscription', None) or Subscription.objects.filter(
+        customer_id=payment.customer_id,
+        status=Subscription.Status.ACTIVE,
+        expiry_time__gt=timezone.now(),
+    ).order_by('-expiry_time').first() 
 
 
 class SubscriptionInline(admin.StackedInline):
@@ -45,10 +65,12 @@ class PaymentAdmin(admin.ModelAdmin):
     actions = ['reconnect_selected']
 
     def device_status(self, obj):
-        sub = getattr(obj, 'subscription', None)
+        sub = _resolve_subscription(obj)
         if sub and not sub.is_currently_entitled():
             return format_html('<span style="color:#f85149">expired</span>')
         session = obj.sessions.filter(status='ACTIVE').order_by('-login_time').first()
+        if not session and sub:
+            session = sub.sessions.filter(status='ACTIVE').order_by('-login_time').first()
         if session:
             return format_html('<span style="color:#3fb950">online \u2022 {}</span>', session.mac_address)
         return format_html('<span style="color:#d29922">not connected</span>')
@@ -57,14 +79,14 @@ class PaymentAdmin(admin.ModelAdmin):
     @admin.action(description="Reconnect selected customers' devices (uses saved MAC)")
     def reconnect_selected(self, request, queryset):
         done, skipped = 0, []
-        for payment in queryset.select_related('customer', 'subscription'):
+        for payment in queryset.select_related('customer'):
             if payment.status != Payment.Status.SUCCESS:
                 skipped.append(f'#{payment.id}: payment not successful')
                 continue
             if not payment.mac_address:
                 skipped.append(f'#{payment.id}: no MAC on file  never connected via the hotspot')
                 continue
-            sub = getattr(payment, 'subscription', None)
+            sub = _resolve_subscription(payment)
             if not sub or not sub.is_currently_entitled():
                 skipped.append(f'#{payment.id}: no active/entitled subscription')
                 continue
