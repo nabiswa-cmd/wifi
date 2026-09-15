@@ -198,15 +198,21 @@ def reconnect_by_code(request):
     Daraja callback (see mpesa_callback below).
     """
     back = reverse('customers:landing') + '#reconnect'
+    ajax = _is_ajax(request)
+
+    def fail(msg):
+        if ajax:
+            return JsonResponse({'success': False, 'error': msg}, status=400)
+        messages.error(request, msg)
+        return redirect(back)
 
     if request.method != 'POST':
         return redirect(back)
 
     code = extract_mpesa_code(request.POST.get('code', ''))
     if not code:
-        messages.error(request, "That doesn't look like an M-Pesa code  paste the code "
-                                 "(e.g. SFH3JT6LKQ) or the whole confirmation message.")
-        return redirect(back)
+        return fail("That doesn't look like an M-Pesa code  paste the code "
+                    "(e.g. SFH3JT6LKQ) or the whole confirmation message.")
 
     payment = (
         Payment.objects
@@ -215,28 +221,25 @@ def reconnect_by_code(request):
         .first()
     )
     if not payment:
-        messages.error(request, "We couldn't find a completed payment with that code. Double-check it and try again.")
-        return redirect(back)
+        return fail("We couldn't find a completed payment with that code. Double-check it and try again.")
 
-    # Same EXTEND-renewal gap as payment_status above  a payment that
-    # renewed an existing subscription was never linked back to it, so
-    # fall back to the customer's current active subscription.
     subscription = getattr(payment, 'subscription', None) or Subscription.objects.filter(
         customer=payment.customer,
         status=Subscription.Status.ACTIVE,
         expiry_time__gt=timezone.now(),
     ).order_by('-expiry_time').first()
     if not subscription:
-        messages.error(request, "We couldn't find an active package for that code. Double-check it and try again.")
-        return redirect(back)
+        return fail("We couldn't find an active package for that code. Double-check it and try again.")
     if not subscription.is_currently_entitled():
-        messages.error(request, "This code's session has expired  that package's time has run out.")
-        return redirect(back)
+        return fail("This code's session has expired  that package's time has run out.")
 
     warning = connect_customer_device(request, payment.customer, subscription)
+
+    if ajax:
+        return JsonResponse({'success': True, 'payment_id': payment.id, 'warning': warning})
+
     if warning:
         messages.warning(request, warning)
-
     messages.success(request, f"Reconnected  your {payment.package.name} package is active "
                                f"until {subscription.expiry_time:%d %b, %H:%M}.")
     return redirect(back)
