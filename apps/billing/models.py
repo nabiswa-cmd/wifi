@@ -108,7 +108,41 @@ class Subscription(models.Model):
 
     def __str__(self):
         return f'{self.customer} - {self.package} ({self.status})'
+    def cutoff_all_devices(self):
+        """
+        Disconnects every device currently online on this subscription 
+        router-side (disable_user + unbypass_mac) and database-side
+        (InternetSession closed with a logout_time). This is the ONE place
+        that must run any time a subscription stops being usable, for
+        ANY reason: natural expiry (expire_subscriptions), or being
+        CANCELLED outright by activate_from_payment's IMMEDIATE renewal
+        path replacing it with a fresh subscription.
+        """
+        import logging
+        from apps.mikrotik.models import InternetSession
+        from apps.mikrotik.services import MikroTikConnectionError, get_mikrotik_service
 
+        logger = logging.getLogger(__name__)
+        now = timezone.now()
+
+        sessions = list(
+            self.sessions.filter(status=InternetSession.Status.ACTIVE).select_related('router')
+        )
+        for session in sessions:
+            router = session.router
+            if router and session.mac_address:
+                try:
+                    get_mikrotik_service(router).disable_user(session.mac_address)
+                    get_mikrotik_service(router).unbypass_mac(session.mac_address)
+                except MikroTikConnectionError as exc:
+                    logger.warning(
+                        'Could not queue disable/unbypass for subscription %s, '
+                        'device %s: %s', self.id, session.mac_address, exc,
+                    )
+            session.status = InternetSession.Status.CLOSED
+            session.logout_time = now
+            session.save(update_fields=['status', 'logout_time'])
+        return sessions
     def is_currently_entitled(self) -> bool:
         """
         The single source of truth for 'does this customer have Internet
@@ -155,6 +189,7 @@ class Subscription(models.Model):
             if existing:
                 existing.status = cls.Status.CANCELLED
                 existing.save(update_fields=['status', 'updated_at'])
+                existing.cutoff_all_devices()
             new_sub = cls.objects.create(
                 customer=customer, package=package, payment=payment,
                 activation_time=now, expiry_time=now + duration, status=cls.Status.ACTIVE,
@@ -196,6 +231,7 @@ class Subscription(models.Model):
             if existing:
                 existing.status = cls.Status.CANCELLED
                 existing.save(update_fields=['status', 'updated_at'])
+                existing.cutoff_all_devices()
             new_sub = cls.objects.create(
                 customer=customer, package=package, voucher=voucher,
                 activation_source=cls.ActivationSource.VOUCHER,
