@@ -5,9 +5,15 @@
 {% block content %}
 <div style="padding:20px;">
   <h2>Subscriptions</h2>
+  {% if messages %}
+    {% for message in messages %}
+      <p class="badge badge-{% if message.tags == 'error' %}danger{% else %}success{% endif %}"
+         style="display:block;padding:12px;margin-bottom:10px;">{{ message }}</p>
+    {% endfor %}
+  {% endif %}
   <div class="card">
     <table>
-      <thead><tr><th>Customer</th><th>Package</th><th>Status</th><th>Source</th><th>Activated</th><th>Expires</th></tr></thead>
+      <thead><tr><th>Customer</th><th>Package</th><th>Status</th><th>Source</th><th>Activated</th><th>Expires</th><th>Add time</th></tr></thead>
       <tbody>
         {% for s in subscriptions %}
         <tr>
@@ -17,9 +23,22 @@
           <td data-label="Source">{{ s.get_activation_source_display }}</td>
           <td data-label="Activated">{{ s.activation_time|default:" " }}</td>
           <td data-label="Expires">{{ s.expiry_time|default:" " }}</td>
+          <td data-label="Add time">
+            <form method="post" action="{% url 'core:add_subscription_time' s.id %}" style="display:flex;gap:4px;">
+              {% csrf_token %}
+              <select name="minutes" style="margin:0;padding:6px;font-size:.8rem;">
+                <option value="5">+5 min</option>
+                <option value="10">+10 min</option>
+                <option value="30" selected>+30 min</option>
+                <option value="60">+1 hour</option>
+              </select>
+              <input type="text" name="reason" placeholder="Reason" style="margin:0;padding:6px;font-size:.8rem;width:100px;" required>
+              <button class="btn" type="submit" style="padding:6px 10px;font-size:.75rem;">Add</button>
+            </form>
+          </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6">No subscriptions found.</td></tr>
+        <tr><td colspan="7">No subscriptions found.</td></tr>
         {% endfor %}
       </tbody>
     </table>

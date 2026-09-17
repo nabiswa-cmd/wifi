@@ -268,25 +268,39 @@
       const data = await res.json();
       if (data.status === 'SUCCESS') {
         if (data.connected) {
-          showResult(true, "You're connected!", "Enjoy your Wi-Fi  taking you there now…");
+          showResult(true, "You're connected!", "Enjoy your Wi-Fi — taking you there now…");
           redirectToSuccess();
         } else {
-          // Payment's done, router's still catching up   keep the waiting
-          // UI up, but past a certain point offer the manual fallback so
-          // the customer isn't just staring at a spinner with no options.
-          statusText.textContent = (Date.now() - startedAt > HINT_AFTER_MS)
-            ? 'Still connecting… you can also paste your M-Pesa code below to connect manually.'
-            : 'Payment received  connecting your device…';
+          // Payment's done, router's still catching up — keep the waiting
+          // UI up, but past a certain point pre-fill the code they already
+          // paid with down at the reconnect button, so they can just tap
+          // it instead of retyping/pasting anything.
+          if (Date.now() - startedAt > HINT_AFTER_MS) {
+            statusText.textContent = 'Still connecting… tap GET CONNECTED below to try again.';
+            prefillReconnect(data.receipt);
+          } else {
+            statusText.textContent = 'Payment received — connecting your device…';
+          }
           pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
         }
-      } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {
-        showResult(false, 'Payment not completed', 'The transaction was ' + data.status.toLowerCase() + '. Try again.');
+      } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {       showResult(false, 'Payment not completed', 'The transaction was ' + data.status.toLowerCase() + '. Try again.');
       } else {
         pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
       }
     } catch (err) {
       pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
     }
+  }
+
+  let reconnectPrefilled = false;
+  function prefillReconnect(receipt) {
+    if (!receipt || reconnectPrefilled) return;
+    const input = document.getElementById('reconnect-code-input');
+    const btn = document.getElementById('reconnect-submit-btn');
+    if (input && !input.value) input.value = receipt;
+    if (btn) btn.textContent = 'GET CONNECTED';
+    reconnectPrefilled = true;
+    document.getElementById('reconnect')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function showResult(success, title, message) {
@@ -320,9 +334,13 @@
   }
 
   function pollReconnectStatus(paymentId, startedAt) {
-    if (Date.now() - startedAt > MAX_WAIT_MS) {
-      setReconnectStatus('error', "Taking longer than expected  you're reconnected, but check your device in a moment.");
-      reconnectSubmitBtn.disabled = false;
+        if (Date.now() - startedAt > MAX_WAIT_MS) {
+      showResult(false, 'Taking longer than expected',
+        "If you completed the M-Pesa prompt, your payment likely went through — your code is already filled in below. Just tap GET CONNECTED. You won't be charged again.");
+      fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)
+        .then((r) => r.json())
+        .then((d) => prefillReconnect(d.receipt))
+        .catch(() => {});
       return;
     }
     fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)

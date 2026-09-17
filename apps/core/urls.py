@@ -8,4 +8,5 @@ urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('payments/', views.payment_management, name='payments'),
     path('subscriptions/', views.subscription_management, name='subscriptions'),
+    path('subscriptions/<int:subscription_id>/add-time/', views.add_subscription_time, name='add_subscription_time'),
 ]

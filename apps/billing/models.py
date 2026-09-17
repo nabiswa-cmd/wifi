@@ -154,91 +154,70 @@ class Subscription(models.Model):
             and self.expiry_time > timezone.now()
         )
 
-    @classmethod
+        @classmethod
     def activate_from_payment(cls, customer, package, payment):
         """
-        Implements Section 12's renewal logic. Default behavior (also the
-        SystemSettings.renewal_behavior default): EXTEND  if the customer
-        already has time remaining, add the new package's duration onto the
-        existing expiry rather than discarding it. This is deliberately the
-        safest default: it can never lose purchased time.
+        Root-cause fix: every successful payment gets its own, fully
+        independent Subscription — never merged into, or cancelling,
+        any other. The old EXTEND/QUEUE/IMMEDIATE branching is gone:
+        IMMEDIATE used to CANCEL and cut off whatever was already active
+        (the exact bug where a KSh 5 top-up killed a still-valid KSh 35
+        session); EXTEND merged two different payments' time into one
+        shared expiry, making it impossible to tell which payment still
+        "owned" a connected device once one of them should have expired.
 
-        Called ONLY after Payment.mark_success()  i.e. only from a verified
-        Daraja callback.
+        Multiple simultaneous ACTIVE subscriptions per customer, each
+        with its own device (see connect_payment_device), are now the
+        correct, expected state — not an edge case to guard against.
+
+        Called ONLY after Payment.mark_success() — i.e. only from a
+        verified Daraja callback (Section 17's idempotency guard already
+        lives there, unchanged).
         """
-        from apps.core.models import SystemSettings
-
         now = timezone.now()
-        behavior = SystemSettings.load().renewal_behavior
         duration = package.duration_as_timedelta()
 
-        existing = cls.objects.filter(
+        new_sub = cls.objects.create(
+            customer=customer, package=package, payment=payment,
+            activation_time=now, expiry_time=now + duration, status=cls.Status.ACTIVE,
+        )
+
+        # Customer.current_package/package_expiry are a denormalized
+        # display convenience ONLY — nothing anywhere makes an
+        # entitlement/expiry decision from them, that's always read from
+        # Subscription.expiry_time directly. Safe to just show whichever
+        # active subscription runs longest.
+        latest = cls.objects.filter(
             customer=customer, status=cls.Status.ACTIVE, expiry_time__gt=now
         ).order_by('-expiry_time').first()
+        if latest:
+            customer.current_package = latest.package
+            customer.package_expiry = latest.expiry_time
+            customer.save(update_fields=['current_package', 'package_expiry', 'updated_at'])
 
-        if existing and behavior == 'EXTEND':
-            existing.expiry_time = existing.expiry_time + duration
-            existing.save(update_fields=['expiry_time', 'updated_at'])
-            new_sub = existing
-        elif existing and behavior == 'QUEUE':
-            new_sub = cls.objects.create(
-                customer=customer, package=package, payment=payment,
-                status=cls.Status.PENDING,  # becomes ACTIVE when the current one expires (Phase 2 job)
-            )
-        else:  # IMMEDIATE, or no existing active subscription
-            if existing:
-                existing.status = cls.Status.CANCELLED
-                existing.save(update_fields=['status', 'updated_at'])
-                existing.cutoff_all_devices()
-            new_sub = cls.objects.create(
-                customer=customer, package=package, payment=payment,
-                activation_time=now, expiry_time=now + duration, status=cls.Status.ACTIVE,
-            )
-
-        # keep Customer's denormalized fields in sync (Section 7)
-        customer.current_package = package
-        customer.package_expiry = new_sub.expiry_time
-        customer.save(update_fields=['current_package', 'package_expiry', 'updated_at'])
         return new_sub
-
     @classmethod
     def activate_from_voucher(cls, customer, package, voucher):
         """
-        Same renewal semantics as activate_from_payment (Section 12), for
-        a voucher code instead of an M-Pesa payment  kept as a sibling
-        method rather than overloading activate_from_payment's signature.
+        Same root-cause fix as activate_from_payment: every redeemed
+        voucher gets its own independent Subscription, never merged into
+        or cancelling another one.
         """
-        from apps.core.models import SystemSettings
-
         now = timezone.now()
-        behavior = SystemSettings.load().renewal_behavior
         duration = package.duration_as_timedelta()
 
-        existing = cls.objects.filter(
+        new_sub = cls.objects.create(
+            customer=customer, package=package, voucher=voucher,
+            activation_source=cls.ActivationSource.VOUCHER,
+            activation_time=now, expiry_time=now + duration, status=cls.Status.ACTIVE,
+        )
+
+        latest = cls.objects.filter(
             customer=customer, status=cls.Status.ACTIVE, expiry_time__gt=now
         ).order_by('-expiry_time').first()
+        if latest:
+            customer.current_package = latest.package
+            customer.package_expiry = latest.expiry_time
+            customer.save(update_fields=['current_package', 'package_expiry', 'updated_at'])
 
-        if existing and behavior == 'EXTEND':
-            existing.expiry_time = existing.expiry_time + duration
-            existing.save(update_fields=['expiry_time', 'updated_at'])
-            new_sub = existing
-        elif existing and behavior == 'QUEUE':
-            new_sub = cls.objects.create(
-                customer=customer, package=package, voucher=voucher,
-                activation_source=cls.ActivationSource.VOUCHER, status=cls.Status.PENDING,
-            )
-        else:
-            if existing:
-                existing.status = cls.Status.CANCELLED
-                existing.save(update_fields=['status', 'updated_at'])
-                existing.cutoff_all_devices()
-            new_sub = cls.objects.create(
-                customer=customer, package=package, voucher=voucher,
-                activation_source=cls.ActivationSource.VOUCHER,
-                activation_time=now, expiry_time=now + duration, status=cls.Status.ACTIVE,
-            )
-
-        customer.current_package = package
-        customer.package_expiry = new_sub.expiry_time
-        customer.save(update_fields=['current_package', 'package_expiry', 'updated_at'])
         return new_sub
