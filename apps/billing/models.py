@@ -154,7 +154,7 @@ class Subscription(models.Model):
             and self.expiry_time > timezone.now()
         )
 
-        @classmethod
+    @classmethod
     def activate_from_payment(cls, customer, package, payment):
         """
         Root-cause fix: every successful payment gets its own, fully
