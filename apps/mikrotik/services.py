@@ -254,17 +254,25 @@ def connect_payment_device(request, payment):
                         warning = (f"We couldn't get you online automatically "
                                    f"({job.result_detail or 'router error'}). "
                                    f"Try reconnecting to the WiFi in a minute, or contact support.")
-                    # BYPASS_MAC is the operation that actually grants internet
-                    # (Section 4)  always (re-)asserted, idempotent on the
-                    # agent side, this is what makes Case B's "ensure bypass
-                    # is present" work with zero extra logic here.
-                    get_mikrotik_service(router).bypass_mac(
-                        new_mac, comment=f'payment{payment.id} until {subscription.expiry_time}',
-                    )
                 except MikroTikConnectionError:
-                    warning = ("Your account is valid and your time is reserved, but we "
+                    warning = (warning or "Your account is valid and your time is reserved, but we "
                                "couldn't reach the router to get you online just now. "
                                "Try again in a minute, or contact support.")
+            # BYPASS_MAC is the operation that actually grants internet
+            # (Section 4)  always (re-)asserted, unconditionally, whether
+            # or not create_user above ran or a MikroTikProfile even
+            # exists. It used to be nested inside the profile-configured
+            # branch, which meant a package with no MikroTikProfile set
+            # never got bypassed at all  payment succeeded, "Connected"
+            # never actually became true, forever.
+            try:
+                get_mikrotik_service(router).bypass_mac(
+                    new_mac, comment=f'payment{payment.id} until {subscription.expiry_time}',
+                )
+            except MikroTikConnectionError:
+                warning = (warning or "Your account is valid and your time is reserved, but we "
+                           "couldn't reach the router to get you online just now. "
+                           "Try again in a minute, or contact support.")
         else:
             warning = ("Your account is valid and your time is reserved, but no router "
                        "is configured yet, so we can't get you online automatically.")

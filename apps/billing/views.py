@@ -149,16 +149,28 @@ def payment_status(request, payment_id):
             def _actually_online():
                 # BYPASS_MAC is what actually grants internet now  not
                 # CREATE_USER, which only creates a record/fallback
-                # account. Checking the wrong job type here was why the
-                # frontend used to report "connected" before the
-                # customer's device could really reach anything, or
-                # vice versa.
+                # account.
+                #
+                # Scoped to THIS payment's own InternetSession.login_time
+                # not just "does a DONE bypass job for this MAC exist,
+                # ever". Without that scoping, any phone that had EVER
+                # been bypassed before (a past purchase, days ago, long
+                # since expired) made this return True instantly for a
+                # brand-new payment, before its own bypass job had even
+                # been created  reporting "Connected" while the customer
+                # genuinely had no internet.
                 if not router or not mac_address:
+                    return False
+                session = InternetSession.objects.filter(
+                    payment=payment, mac_address=mac_address,
+                ).order_by('-login_time').first()
+                if not session or not session.login_time:
                     return False
                 return MikroTikJob.objects.filter(
                     router=router, job_type=MikroTikJob.JobType.BYPASS_MAC,
                     payload__mac_address=mac_address,
                     status=MikroTikJob.Status.DONE,
+                    created_at__gte=session.login_time,
                 ).exists()
 
             connected = _actually_online()
