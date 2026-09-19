@@ -7,7 +7,7 @@
       <a href="{% url 'core:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a>
       <a href="{% url 'core:payments' %}" class="{% if request.resolver_match.url_name == 'payments' %}active{% endif %}">Payments</a>
       <a href="{% url 'core:subscriptions' %}" class="{% if request.resolver_match.url_name == 'subscriptions' %}active{% endif %}">Subscriptions</a>
-      <a href="{% url 'core:vouchers' %}" class="{% if request.resolver_match.url_name == 'vouchers' %}active{% endif %}">Vouchers</a>
+     
       <hr style="border-color:rgba(255,255,255,.12); margin:8px 16px;">
       <a href="/django-admin/" target="_blank" rel="noopener">Full Django Admin ↗</a>
     </nav>
