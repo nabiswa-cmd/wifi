@@ -1,8 +1,9 @@
 
 
 
-{% extends "base.html" %}
-{% block content %}
+{% extends "core/admin_base.html" %}
+{% block admin_title %}Subscriptions{% endblock %}
+{% block admin_content %}
 <div style="padding:20px;">
   <h2>Subscriptions</h2>
   {% if messages %}
@@ -24,7 +25,9 @@
           <td data-label="Activated">{{ s.activation_time|default:" " }}</td>
           <td data-label="Expires">{{ s.expiry_time|default:" " }}</td>
           <td data-label="Add time">
-            <form method="post" action="{% url 'core:add_subscription_time' s.id %}" style="display:flex;gap:4px;">
+            <form method="post" action="{% url 'core:add_subscription_time' s.id %}"
+                  style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;"
+                  onsubmit="const sel=this.querySelector('.reason-select'); const custom=this.querySelector('.reason-custom'); if(sel.value==='OTHER'){sel.name='';} else {custom.name='';}">
               {% csrf_token %}
               <select name="minutes" style="margin:0;padding:6px;font-size:.8rem;">
                 <option value="5">+5 min</option>
@@ -32,7 +35,14 @@
                 <option value="30" selected>+30 min</option>
                 <option value="60">+1 hour</option>
               </select>
-              <input type="text" name="reason" placeholder="Reason" style="margin:0;padding:6px;font-size:.8rem;width:100px;" required>
+              <select name="reason" class="reason-select" style="margin:0;padding:6px;font-size:.8rem;"
+                      onchange="this.form.querySelector('.reason-custom').hidden = (this.value !== 'OTHER')">
+                <option value="Electricity">Electricity</option>
+                <option value="Failed connection">Failed connection</option>
+                <option value="OTHER">Other / Custom reason</option>
+              </select>
+              <input type="text" name="reason" class="reason-custom" placeholder="Enter reason"
+                     style="margin:0;padding:6px;font-size:.8rem;width:120px;" hidden required>
               <button class="btn" type="submit" style="padding:6px 10px;font-size:.75rem;">Add</button>
             </form>
           </td>

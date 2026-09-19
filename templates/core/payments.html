@@ -1,11 +1,12 @@
 
 
-{% extends "base.html" %}
-{% block content %}
+{% extends "core/admin_base.html" %}
+{% block admin_title %}Payments{% endblock %}
+{% block admin_content %}
 <div style="padding:20px;">
   <h2>Payments</h2>
   <div class="grid" style="padding:0 0 20px;">
-    <div class="card"><h3>Total Revenue (filtered)</h3><p class="price">{{ branding.currency }} {{ totals.total_revenue|default:0 }}</p></div>
+    <div class="card"><h3>Successful Revenue (filtered)</h3><p class="price">{{ branding.currency }} {{ totals.total_revenue|default:0 }}</p></div>
     <div class="card"><h3>Successful</h3><p class="price">{{ totals.successful }}</p></div>
     <div class="card"><h3>Failed</h3><p class="price">{{ totals.failed }}</p></div>
     <div class="card"><h3>Pending</h3><p class="price">{{ totals.pending }}</p></div>

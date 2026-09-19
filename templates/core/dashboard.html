@@ -1,6 +1,7 @@
-{% extends "base.html" %}
+{% extends "core/admin_base.html" %}
 {% block title %}Dashboard &middot; {{ branding.business_name }}{% endblock %}
-{% block content %}
+{% block admin_title %}Dashboard{% endblock %}
+{% block admin_content %}
 <div style="padding:20px 20px 0; display:flex; gap:12px;">
   <a class="btn btn-secondary" href="{% url 'core:payments' %}">Payments</a>
   <a class="btn btn-secondary" href="{% url 'core:subscriptions' %}">Subscriptions</a>
@@ -29,9 +30,16 @@
   </div>
 </div>
 
+<div class="card" style="margin-top:12px;">
+  <h3>Monthly revenue (successful payments only)</h3>
+  <canvas id="monthlyChart" height="180"></canvas>
+</div>
+
 {{ chart_labels|json_script:"chart-labels" }}
 {{ chart_revenue|json_script:"chart-revenue" }}
 {{ chart_sessions|json_script:"chart-sessions" }}
+{{ monthly_labels|json_script:"monthly-labels" }}
+{{ monthly_totals|json_script:"monthly-totals" }}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script>
@@ -73,6 +81,27 @@
         label: 'Devices connected',
         data: chartSessions,
         backgroundColor: cssVar('--color-secondary'),
+      }],
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+      },
+      plugins: { legend: { labels: { color: textColor } } },
+    },
+  });
+
+  const monthlyLabels = JSON.parse(document.getElementById('monthly-labels').textContent);
+  const monthlyTotals = JSON.parse(document.getElementById('monthly-totals').textContent);
+  new Chart(document.getElementById('monthlyChart'), {
+    type: 'bar',
+    data: {
+      labels: monthlyLabels,
+      datasets: [{
+        label: 'Revenue ({{ branding.currency }})',
+        data: monthlyTotals,
+        backgroundColor: cssVar('--color-primary'),
       }],
     },
     options: {

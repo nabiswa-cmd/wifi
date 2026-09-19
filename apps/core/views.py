@@ -2,12 +2,14 @@ import csv
 import io
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.core.management import call_command
 from django.db.models import Sum, Count, Q
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render, redirect
+from django.shortcuts import get_object_or_404, render, redirect
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -63,7 +65,17 @@ def dashboard(request):
         ).values('login_time__date').annotate(count=Count('id'))
     }
 
+    monthly = (
+        Payment.objects.filter(status=Payment.Status.SUCCESS, created_at__gte=today - timedelta(days=180))
+        .annotate(month=TruncMonth('created_at'))
+        .values('month').annotate(total=Sum('amount'), count=Count('id')).order_by('month')
+    )
+    monthly_labels = [m['month'].strftime('%b %Y') for m in monthly]
+    monthly_totals = [float(m['total']) for m in monthly]
+
     context = {
+        'monthly_labels': monthly_labels,
+        'monthly_totals': monthly_totals,
         'total_customers': Customer.objects.count(),
         'active_customers': Customer.objects.filter(status=Customer.Status.ACTIVE).count(),
         'expired_customers': Customer.objects.filter(
@@ -112,7 +124,7 @@ def payment_management(request):
         return response
 
     totals = qs.aggregate(
-        total_revenue=Sum('amount'),
+        total_revenue=Sum('amount', filter=Q(status='SUCCESS')),
         successful=Count('id', filter=Q(status='SUCCESS')),
         failed=Count('id', filter=Q(status__in=['FAILED', 'CANCELLED', 'TIMEOUT'])),
         pending=Count('id', filter=Q(status='PENDING')),
