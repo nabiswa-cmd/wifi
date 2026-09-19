@@ -36,13 +36,13 @@
                 <option value="60">+1 hour</option>
               </select>
               <select name="reason" class="reason-select" style="margin:0;padding:6px;font-size:.8rem;"
-                      onchange="this.form.querySelector('.reason-custom').hidden = (this.value !== 'OTHER')">
+                      onchange="const c=this.form.querySelector('.reason-custom'); const isOther=(this.value==='OTHER'); c.hidden=!isOther; c.required=isOther;">
                 <option value="Electricity">Electricity</option>
                 <option value="Failed connection">Failed connection</option>
                 <option value="OTHER">Other / Custom reason</option>
               </select>
               <input type="text" name="reason" class="reason-custom" placeholder="Enter reason"
-                     style="margin:0;padding:6px;font-size:.8rem;width:120px;" hidden required>
+                     style="margin:0;padding:6px;font-size:.8rem;width:120px;" hidden>
               <button class="btn" type="submit" style="padding:6px 10px;font-size:.75rem;">Add</button>
             </form>
           </td>
