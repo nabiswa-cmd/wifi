@@ -77,7 +77,7 @@ class MikroTikJobAdmin(admin.ModelAdmin):
         username = (obj.payload or {}).get('username', '')
         mac = (obj.payload or {}).get('mac_address', '')
         parts = [p for p in (username, mac) if p]
-        return ' / '.join(parts) or '—'
+        return ' / '.join(parts) or ' '
     payload_summary.short_description = 'Payload'
 
     @admin.action(description='Retry selected failed jobs (re-queue for the agent)')

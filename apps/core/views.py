@@ -38,7 +38,7 @@ def dashboard(request):
     """
     Section 20's KPI dashboard, backed by real queries against billing
     and customer data. The reporting-phase charts (Section 23) are now
-    built in too — revenue and connection activity over the last 14 days.
+    built in too   revenue and connection activity over the last 14 days.
     """
     from datetime import timedelta
     from apps.customers.models import Customer
@@ -150,7 +150,7 @@ def add_subscription_time(request, subscription_id):
     """
     Staff compensation tool: extend a customer's own real subscription
     without touching the original M-Pesa amount or creating a fake
-    payment. Logged via AuditLog for accountability — who added time, how
+    payment. Logged via AuditLog for accountability   who added time, how
     much, why, and the before/after expiry.
     """
     from apps.billing.models import Subscription
@@ -191,7 +191,7 @@ def add_subscription_time(request, subscription_id):
 
     messages.success(
         request,
-        f'Added {minutes} min for {subscription.customer.full_name} — '
+        f'Added {minutes} min for {subscription.customer.full_name}   '
         f'new expiry {subscription.expiry_time:%d %b, %H:%M}.',
     )
     return redirect(back)

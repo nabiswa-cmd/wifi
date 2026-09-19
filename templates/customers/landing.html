@@ -271,10 +271,10 @@
       const data = await res.json();
       if (data.status === 'SUCCESS') {
         if (data.connected) {
-          showResult(true, "You're connected!", "Enjoy your Wi-Fi — taking you there now…");
+          showResult(true, "You're connected!", "Enjoy your Wi-Fi   taking you there now…");
           redirectToSuccess();
         } else {
-          // Payment's done, router's still catching up — keep the waiting
+          // Payment's done, router's still catching up   keep the waiting
           // UI up, but past a certain point pre-fill the code they already
           // paid with down at the reconnect button, so they can just tap
           // it instead of retyping/pasting anything.
@@ -282,7 +282,7 @@
             statusText.textContent = 'Still connecting… tap GET CONNECTED below to try again.';
             prefillReconnect(data.receipt);
           } else {
-            statusText.textContent = 'Payment received — connecting your device…';
+            statusText.textContent = 'Payment received   connecting your device…';
           }
           pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
         }
@@ -339,7 +339,7 @@
   function pollReconnectStatus(paymentId, startedAt) {
         if (Date.now() - startedAt > MAX_WAIT_MS) {
       showResult(false, 'Taking longer than expected',
-        "If you completed the M-Pesa prompt, your payment likely went through — your code is already filled in below. Just tap GET CONNECTED. You won't be charged again.");
+        "If you completed the M-Pesa prompt, your payment likely went through   your code is already filled in below. Just tap GET CONNECTED. You won't be charged again.");
       fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)
         .then((r) => r.json())
         .then((d) => prefillReconnect(d.receipt))

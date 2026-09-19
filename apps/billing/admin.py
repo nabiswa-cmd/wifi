@@ -14,7 +14,7 @@ def _resolve_subscription(payment):
     payment that originally created a Subscription row. Under the
     default EXTEND renewal behavior, every later top-up/renewal payment
     for the same customer shares that same Subscription without ever
-    getting its own link — so checking the direct FK alone makes every
+    getting its own link   so checking the direct FK alone makes every
     renewal payment look like it has no subscription at all, when its
     money in fact correctly extended the real one. This mirrors the
     fallback already used in billing/views.py (payment_status,
@@ -38,7 +38,7 @@ class SubscriptionInline(admin.StackedInline):
 
     def router_jobs_link(self, obj):
         if not obj.mikrotik_username:
-            return '—'
+            return ' '
         url = (reverse('admin:mikrotik_mikrotikjob_changelist')
                + f'?q={obj.mikrotik_username}')
         return format_html('<a href="{}">View MikroTik jobs for {}</a>', url, obj.mikrotik_username)

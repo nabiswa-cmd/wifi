@@ -158,7 +158,7 @@ class Subscription(models.Model):
     def activate_from_payment(cls, customer, package, payment):
         """
         Root-cause fix: every successful payment gets its own, fully
-        independent Subscription — never merged into, or cancelling,
+        independent Subscription   never merged into, or cancelling,
         any other. The old EXTEND/QUEUE/IMMEDIATE branching is gone:
         IMMEDIATE used to CANCEL and cut off whatever was already active
         (the exact bug where a KSh 5 top-up killed a still-valid KSh 35
@@ -168,9 +168,9 @@ class Subscription(models.Model):
 
         Multiple simultaneous ACTIVE subscriptions per customer, each
         with its own device (see connect_payment_device), are now the
-        correct, expected state — not an edge case to guard against.
+        correct, expected state   not an edge case to guard against.
 
-        Called ONLY after Payment.mark_success() — i.e. only from a
+        Called ONLY after Payment.mark_success()   i.e. only from a
         verified Daraja callback (Section 17's idempotency guard already
         lives there, unchanged).
         """
@@ -183,7 +183,7 @@ class Subscription(models.Model):
         )
 
         # Customer.current_package/package_expiry are a denormalized
-        # display convenience ONLY — nothing anywhere makes an
+        # display convenience ONLY   nothing anywhere makes an
         # entitlement/expiry decision from them, that's always read from
         # Subscription.expiry_time directly. Safe to just show whichever
         # active subscription runs longest.
