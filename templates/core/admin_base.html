@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="admin-shell">
+  <div class="admin-sidebar" id="adminSidebar">
+    <div class="admin-sidebar-brand">{{ branding.business_name }}</div>
+    <nav>
+      <a href="{% url 'core:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a>
+      {% if request.user.staff_profile.role.name == 'SUPER_ADMIN' or request.user.staff_profile.role.name == 'SHAREHOLDER' %}
+      <a href="{% url 'core:revenue_dashboard' %}" class="{% if request.resolver_match.url_name == 'revenue_dashboard' %}active{% endif %}">Revenue</a>
+      <a href="{% url 'core:feedback_list' %}" class="{% if request.resolver_match.url_name == 'feedback_list' %}active{% endif %}">
+        Customer Feedback
+        {% if feedback_new_count %}<span class="sidebar-badge">{{ feedback_new_count }}</span>{% endif %}
+      </a>
+      {% endif %}
+      {% if request.user.staff_profile.role.name == 'SUPER_ADMIN' %}
+      <a href="{% url 'core:shareholder_activity' %}" class="{% if request.resolver_match.url_name == 'shareholder_activity' %}active{% endif %}">Shareholder Activity</a>
+      {% endif %}
+      <a href="{% url 'core:payments' %}" class="{% if request.resolver_match.url_name == 'payments' %}active{% endif %}">Payments</a>
+      <a href="{% url 'core:subscriptions' %}" class="{% if request.resolver_match.url_name == 'subscriptions' %}active{% endif %}">Subscriptions</a>
+      <a href="{% url 'core:time_adjustments_log' %}" class="{% if request.resolver_match.url_name == 'time_adjustments_log' %}active{% endif %}">Time Adjustments Log</a>
+      <a href="{% url 'core:vouchers' %}" class="{% if request.resolver_match.url_name == 'vouchers' %}active{% endif %}">Vouchers</a>
+
+      <hr style="border-color:rgba(255,255,255,.12); margin:8px 16px;">
+      <a href="{% url 'core:my_account' %}" class="{% if request.resolver_match.url_name == 'my_account' %}active{% endif %}">My Account</a>
+      {% if request.user.staff_profile.role.name == 'SUPER_ADMIN' %}
+      <a href="/django-admin/" target="_blank" rel="noopener">Full Django Admin ↗</a>
+      {% endif %}
+      <a href="{% url 'core:logout' %}">Logout</a>
+    </nav>
+  </div>
+  <div class="admin-sidebar-overlay" id="adminSidebarOverlay"></div>
+
+  <div class="admin-main">
+    <div class="admin-topbar">
+      <button class="admin-hamburger" id="adminHamburger" type="button" aria-label="Menu">&#9776;</button>
+      <div class="admin-topbar-title">{% block admin_title %}Admin{% endblock %}</div>
+    </div>
+    <div class="admin-content">
+      {% block admin_content %}{% endblock %}
+    </div>
+  </div>
+</div>
+
+{% if messages %}
+<div class="toast-stack" id="toastStack">
+  {% for message in messages %}
+  <div class="toast toast-{% if message.tags == 'error' %}danger{% elif message.tags == 'warning' %}warning{% else %}success{% endif %}">
+    <span class="toast-icon">{% if message.tags == 'error' %}✕{% elif message.tags == 'warning' %}!{% else %}✓{% endif %}</span>
+    <span class="toast-msg">{{ message }}</span>
+    <button class="toast-close" type="button" aria-label="Dismiss" onclick="this.parentElement.remove()">&times;</button>
+  </div>
+  {% endfor %}
+</div>
+<script>
+  (function () {
+    var toasts = document.querySelectorAll('#toastStack .toast');
+    toasts.forEach(function (toast, i) {
+      setTimeout(function () {
+        toast.classList.add('toast-leaving');
+        setTimeout(function () { toast.remove(); }, 350);
+      }, 6000 + i * 400);
+    });
+  })();
+</script>
+{% endif %}
+
+<style>
+  .admin-shell { display: flex; min-height: 100vh; align-items: stretch; }
+  .admin-sidebar {
+    width: 220px; flex-shrink: 0; background: #1b1b1b; color: #eee;
+    position: fixed; top: 0; left: 0; height: 100vh; overflow-y: auto;
+    z-index: 200; transition: transform .25s ease;
+  }
+  .admin-sidebar-brand {
+    padding: 18px 16px; font-weight: 700; font-size: .95rem;
+    border-bottom: 1px solid rgba(255,255,255,.1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .admin-sidebar nav { display: flex; flex-direction: column; padding: 8px 0; }
+  .admin-sidebar nav a {
+    padding: 11px 16px; color: #c9c9c9; text-decoration: none; font-size: .85rem;
+  }
+  .admin-sidebar nav a:hover, .admin-sidebar nav a.active { background: var(--color-primary); color: #1c2410; }
+  .sidebar-badge {
+    display: inline-block; min-width: 18px; padding: 1px 6px; margin-left: 6px;
+    border-radius: 999px; background: var(--status-danger); color: #fff;
+    font-size: .7rem; font-weight: 700; text-align: center; line-height: 1.4;
+  }
+  .admin-sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 150; }
+
+  .admin-main { flex: 1; min-width: 0; margin-left: 220px; }
+  .admin-topbar {
+    display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+    background: var(--color-surface); border-bottom: 1px solid var(--color-border);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .admin-hamburger { display: none; background: none; border: none; font-size: 1.3rem; cursor: pointer; color: var(--color-text); padding: 4px 6px; }
+  .admin-topbar-title { font-weight: 700; }
+  .admin-content { padding: 14px; max-width: 100%; }
+  .admin-content .card { padding: 12px 14px; }
+  .admin-content .grid { gap: 10px; padding: 0 0 14px; }
+  .admin-content table { display: block; overflow-x: auto; white-space: nowrap; max-width: 100%; -webkit-overflow-scrolling: touch; }
+
+  @media (max-width: 860px) {
+    .admin-sidebar { transform: translateX(-100%); }
+    .admin-sidebar.open { transform: translateX(0); }
+    .admin-main { margin-left: 0; }
+    .admin-hamburger { display: block; }
+  }
+</style>
+<script>
+  (function () {
+    var sidebar = document.getElementById('adminSidebar');
+    var overlay = document.getElementById('adminSidebarOverlay');
+    var btn = document.getElementById('adminHamburger');
+    function setOpen(open) {
+      sidebar.classList.toggle('open', open);
+      overlay.style.display = open ? 'block' : 'none';
+    }
+    btn.addEventListener('click', function () { setOpen(!sidebar.classList.contains('open')); });
+    overlay.addEventListener('click', function () { setOpen(false); });
+  })();
+</script>
+{% endblock %}

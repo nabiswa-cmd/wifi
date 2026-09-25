@@ -1,0 +1,306 @@
+"""
+Customer-facing purchase flow (Section 9/10/11) and the Daraja callback
+(Section 10/32).
+
+`initiate_purchase` creates a PENDING Payment, then actually calls Daraja
+via `_trigger_stk_push`. It does NOT activate anything itself  only
+`mpesa_callback`, triggered by Safaricom's server hitting our callback URL
+after the customer enters their PIN, may mark a payment successful and
+activate a subscription (Section 10's hard rule).
+"""
+import datetime
+import json
+import logging
+
+from django.db import transaction
+from django.http import JsonResponse
+from django.shortcuts import render, redirect, get_object_or_404
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+
+from django.contrib import messages
+from django.urls import reverse
+
+from apps.customers.models import Customer
+from apps.packages.models import InternetPackage
+from apps.mikrotik.services import connect_payment_device
+from apps.mikrotik.models import InternetSession, MikroTikJob, MikroTikRouter
+from .models import Payment, Subscription
+from .utils import normalize_phone_number, extract_mpesa_code
+from . import mpesa
+
+logger = logging.getLogger(__name__)
+
+
+def _trigger_stk_push(payment: Payment):
+    """
+    Calls Daraja for real. On failure this marks the payment FAILED
+    immediately (rather than leaving it PENDING forever) so the customer
+    isn't stuck watching a spinner for a request that was never sent.
+    """
+    try:
+        data = mpesa.stk_push(
+            phone_number=payment.phone_number,
+            amount=payment.amount,
+             account_reference=f'WIFI-{payment.id}',
+            transaction_desc=f'{payment.package.name} WiFi',
+        )
+    except mpesa.MpesaError as exc:
+        logger.error('STK push failed for payment %s: %s', payment.id, exc)
+        payment.status = Payment.Status.FAILED
+        payment.save(update_fields=['status', 'updated_at'])
+        return
+
+    payment.checkout_request_id = data.get('CheckoutRequestID')
+    payment.merchant_request_id = data.get('MerchantRequestID')
+    payment.save(update_fields=['checkout_request_id', 'merchant_request_id', 'updated_at'])
+
+
+def _is_ajax(request):
+    return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+
+@require_POST
+def initiate_purchase(request, package_id):
+    package = get_object_or_404(InternetPackage, pk=package_id, is_active=True)
+    raw_phone = request.POST.get('phone_number', '').strip()
+    ajax = _is_ajax(request)
+
+    # Accepts 0712345678, 0712 345 678, +254712345678, 254712345678,
+    # 712345678, etc.  normalized once here so every downstream table
+    # (Customer, Payment) and the Daraja call all use the same
+    # 254XXXXXXXXX format regardless of how the customer typed it.
+    phone_number = normalize_phone_number(raw_phone)
+    if not phone_number:
+        error = 'Enter a valid Safaricom number, e.g. 0712345678.'
+        if ajax:
+            return JsonResponse({'error': error}, status=400)
+        return render(request, 'customers/landing.html', {
+            'packages': InternetPackage.objects.filter(is_active=True).order_by('display_order'),
+            'error': error,
+        })
+
+    full_name = request.POST.get('full_name', '').strip() or phone_number
+
+    customer, _ = Customer.objects.get_or_create(
+        phone_number=phone_number,
+        defaults={'full_name': full_name},
+    )
+
+    payment = Payment.objects.create(
+        customer=customer, package=package, phone_number=phone_number, amount=package.price,
+        status=Payment.Status.PENDING,
+    )
+    _trigger_stk_push(payment)
+    payment.refresh_from_db()
+
+    if ajax:
+        if payment.status == Payment.Status.FAILED:
+            return JsonResponse({'error': 'Could not reach M-Pesa. Please try again.'}, status=502)
+        # The modal on the landing page takes it from here via
+        # /billing/payment/<id>/status/  no redirect, no new page load.
+        return JsonResponse({'payment_id': payment.id, 'status': payment.status})
+
+    return redirect('billing:payment_waiting', payment_id=payment.id)
+
+
+def payment_waiting(request, payment_id):
+    """Fallback page for non-JS clients only  the primary flow never
+    navigates here (see landing.html's modal)."""
+    payment = get_object_or_404(Payment, pk=payment_id)
+    return render(request, 'customers/payment_waiting.html', {'payment': payment})
+
+
+def payment_status(request, payment_id):
+    """Polled by the modal's JS (Section 10  status is always read from
+    the backend record, never assumed client-side).
+
+    Once a payment is SUCCESS, this is also the trigger point for
+    actually creating the hotspot user and handing the browser back the
+    router's login URL + generated credentials, so the JS can auto-submit
+    them and the customer is online within seconds of paying  no second
+    manual login screen. Guarded by `already_connected` so a client that
+    keeps polling after success (defensive, shouldn't normally happen
+    since the JS stops once it sees SUCCESS) doesn't re-enqueue the
+    MikroTik job on every poll.
+    """
+    payment = get_object_or_404(Payment, pk=payment_id)
+    response = {'status': payment.status, 'receipt': payment.mpesa_receipt_number}
+
+    if payment.status == Payment.Status.SUCCESS:
+        # payment.subscription only exists when THIS payment created a
+        # brand-new Subscription row. Under the default EXTEND renewal
+        # behavior (Subscription.activate_from_payment), a repeat
+        # purchase reuses the customer's existing subscription and only
+        # bumps its expiry_time  it never re-points the OneToOne back to
+        # this new payment. Without this fallback, every renewal payment
+        # would succeed on M-Pesa but silently never enqueue a MikroTik
+        # job, because this whole block would just be skipped.
+        subscription = getattr(payment, 'subscription', None) or Subscription.objects.filter(
+            customer=payment.customer,
+            status=Subscription.Status.ACTIVE,
+            expiry_time__gt=timezone.now(),
+        ).order_by('-expiry_time').first()
+        if subscription:
+            router = MikroTikRouter.objects.filter(is_active=True).first()
+            mac_address = (request.GET.get('mac') or '').upper().replace('-', ':')
+
+            def _actually_online():
+                # BYPASS_MAC is what actually grants internet now  not
+                # CREATE_USER, which only creates a record/fallback
+                # account.
+                #
+                # Scoped to THIS payment's own InternetSession.login_time
+                # not just "does a DONE bypass job for this MAC exist,
+                # ever". Without that scoping, any phone that had EVER
+                # been bypassed before (a past purchase, days ago, long
+                # since expired) made this return True instantly for a
+                # brand-new payment, before its own bypass job had even
+                # been created  reporting "Connected" while the customer
+                # genuinely had no internet.
+                if not router or not mac_address:
+                    return False
+                session = InternetSession.objects.filter(
+                    payment=payment, mac_address=mac_address,
+                ).order_by('-login_time').first()
+                if not session or not session.login_time:
+                    return False
+                return MikroTikJob.objects.filter(
+                    router=router, job_type=MikroTikJob.JobType.BYPASS_MAC,
+                    payload__mac_address=mac_address,
+                    status=MikroTikJob.Status.DONE,
+                    created_at__gte=session.login_time,
+                ).exists()
+
+            connected = _actually_online()
+            if not connected:
+                # connect_payment_device is safe to call repeatedly  it's
+                # idempotent on both the InternetSession row and the router
+                # binding  so this naturally becomes true within a poll or
+                # two, without ever touching a DIFFERENT payment's device.
+                warning = connect_payment_device(request, payment)
+                if warning:
+                    response['warning'] = warning
+                connected = _actually_online()
+            response['connected'] = connected
+    return JsonResponse(response)
+
+def _parse_transaction_date(value):
+    """Daraja sends TransactionDate as an int like 20240521123456."""
+    try:
+        return timezone.make_aware(datetime.datetime.strptime(str(value), '%Y%m%d%H%M%S'))
+    except (ValueError, TypeError):
+        return timezone.now()
+def reconnect_by_code(request):
+    """
+    Self-service recovery: a customer whose payment succeeded but whose
+    device never got connected (or who wants to switch devices) pastest
+    
+    their M-Pesa code here instead of paying again.
+
+    Lives as a section at the bottom of the landing page (see
+    customers/landing.html#reconnect), alongside the voucher option  
+    both funnel into apps.mikrotik.services.connect_customer_device so
+    the one-payment-one-device rule is enforced identically either way.
+
+    Never re-verifies the payment with Safaricom  it trusts our own
+    Payment record, which was itself only ever marked SUCCESS by a real
+    Daraja callback (see mpesa_callback below).
+    """
+    back = reverse('customers:landing') + '#reconnect'
+    ajax = _is_ajax(request)
+
+    def fail(msg):
+        if ajax:
+            return JsonResponse({'success': False, 'error': msg}, status=400)
+        messages.error(request, msg)
+        return redirect(back)
+
+    if request.method != 'POST':
+        return redirect(back)
+
+    code = extract_mpesa_code(request.POST.get('code', ''))
+    if not code:
+        return fail("That doesn't look like an M-Pesa code  paste the code "
+                    "(e.g. SFH3JT6LKQ) or the whole confirmation message.")
+
+    payment = (
+        Payment.objects
+        .filter(mpesa_receipt_number__iexact=code, status=Payment.Status.SUCCESS)
+        .select_related('customer', 'package', 'subscription')
+        .first()
+    )
+    if not payment:
+        return fail("We couldn't find a completed payment with that code. Double-check it and try again.")
+
+    subscription = getattr(payment, 'subscription', None) or Subscription.objects.filter(
+        customer=payment.customer,
+        status=Subscription.Status.ACTIVE,
+        expiry_time__gt=timezone.now(),
+    ).order_by('-expiry_time').first()
+    if not subscription:
+        return fail("We couldn't find an active package for that code. Double-check it and try again.")
+    if not subscription.is_currently_entitled():
+        return fail("This code's session has expired  that package's time has run out.")
+
+    warning = connect_payment_device(request, payment)
+
+    if ajax:
+        return JsonResponse({'success': True, 'payment_id': payment.id, 'warning': warning})
+
+    if warning:
+        messages.warning(request, warning)
+    messages.success(request, f"Reconnected  your {payment.package.name} package is active "
+                               f"until {subscription.expiry_time:%d %b, %H:%M}.")
+    return redirect(back)
+
+
+
+@csrf_exempt
+@require_POST
+def mpesa_callback(request):
+    """
+    Safaricom posts here once the customer has responded to the STK
+    prompt (entered PIN, cancelled, or timed out). Idempotent by
+    construction (Section 32): CheckoutRequestID is unique, and an
+    already-SUCCESS payment is a no-op on a repeat callback.
+    """
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({'ResultCode': 1, 'ResultDesc': 'Invalid payload'}, status=400)
+
+    stk_callback = body.get('Body', {}).get('stkCallback', {})
+    checkout_request_id = stk_callback.get('CheckoutRequestID')
+    result_code = stk_callback.get('ResultCode')
+
+    if not checkout_request_id:
+        return JsonResponse({'ResultCode': 1, 'ResultDesc': 'Missing CheckoutRequestID'}, status=400)
+
+    with transaction.atomic():
+        try:
+            payment = Payment.objects.select_for_update().get(checkout_request_id=checkout_request_id)
+        except Payment.DoesNotExist:
+            logger.warning('Callback for unknown CheckoutRequestID %s', checkout_request_id)
+            return JsonResponse({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+        if payment.status == Payment.Status.SUCCESS:
+            return JsonResponse({'ResultCode': 0, 'ResultDesc': 'Already processed'})
+
+        if result_code == 0:
+            items = {
+                i['Name']: i.get('Value')
+                for i in stk_callback.get('CallbackMetadata', {}).get('Item', [])
+            }
+            receipt = items.get('MpesaReceiptNumber', '')
+            transaction_time = _parse_transaction_date(items.get('TransactionDate'))
+            payment.mark_success(receipt=receipt, transaction_time=transaction_time, raw_payload=body)
+            Subscription.activate_from_payment(payment.customer, payment.package, payment)
+        else:
+            # 1032 = customer cancelled; anything else = failed/timeout.
+            payment.status = Payment.Status.CANCELLED if result_code == 1032 else Payment.Status.FAILED
+            payment.raw_callback_payload = body
+            payment.save(update_fields=['status', 'raw_callback_payload', 'updated_at'])
+
+    return JsonResponse({'ResultCode': 0, 'ResultDesc': 'Accepted'})

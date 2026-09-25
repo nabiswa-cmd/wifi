@@ -1,0 +1,657 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ branding.business_name }} &middot; Get Connected{% endblock %}
+{% block content %}
+<div style="text-align:center; padding:32px 16px 8px;">
+  <div style="display:flex; align-items:center; justify-content:center; gap:14px;">
+    <img src="{% static 'images/logo.png' %}" alt="Logo" style="height:56px; width:auto;">
+    <h1 style="font-family:'Tangerine',cursive; font-size:3.2rem; font-weight:400; line-height:1; margin:0;">{{ branding.business_name }}</h1>
+  </div>
+  <p style="color:var(--color-text-muted);">{{ branding.portal_message }}</p>
+  <p style="font-size:.85rem; color:var(--color-primary); font-weight:600;">
+    Already paid but not online? Scroll down and paste your M-Pesa code to connect  no need to pay again.
+  </p>
+  <p style="font-size:.85rem;">
+    Already paid, or have a voucher? <a href="#reconnect">Get connected </a>
+  </p>
+</div>
+
+{% csrf_token %}
+<div class="grid" id="package">
+  {% for package in packages %}
+  <div class="card package-card">
+    <div class="package-head">
+      <h3>{{ package.name }}</h3>
+      <div class="package-dots">
+        {% for dot in "1234" %}
+        <span{% if forloop.first %} class="active"{% endif %}></span>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="package-body">
+      <div class="price">{{ branding.currency }} {{ package.price|floatformat:"-2" }}</div>
+      <p class="validity">Valid for {{ package.duration }} {{ package.get_duration_unit_display }}</p>
+      <button class="btn buy-btn" data-package-id="{{ package.id }}" data-package-name="{{ package.name }}">Select Plan</button>
+    </div>
+  </div>
+  {% empty %}
+  <p>No packages available right now.</p>
+  {% endfor %}
+</div>
+
+<!-- Purchase modal: everything happens here, no page navigation (Section 9). -->
+<div id="buy-modal-overlay" class="modal-overlay" hidden>
+  <div class="modal-card">
+
+    <!-- Step 1: phone number -->
+    <div id="modal-step-phone">
+      <h3 id="modal-package-name">Buy package</h3>
+      <input type="tel" id="modal-phone-input" placeholder="07XXXXXXXX" autocomplete="tel" inputmode="numeric">
+      <p id="modal-phone-error" class="badge badge-danger" hidden></p>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" id="modal-pay-btn" style="flex:1;">Pay with M-Pesa</button>
+        <button class="btn btn-secondary" id="modal-cancel-btn" style="flex:1;">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Step 2a: sending the request  short dot-pulse, distinct from the
+         longer wait below, so it's clear something is actively happening
+         right now rather than just sitting there. -->
+    <div id="modal-step-sending" hidden style="text-align:center;">
+      <div class="dot-pulse"><span></span><span></span><span></span></div>
+      <h3>Sending payment request…</h3>
+      <p style="color:var(--color-text-muted);">Talking to M-Pesa, one moment.</p>
+    </div>
+
+    <!-- Step 2b: waiting for the customer to enter their PIN (no full-page
+         load, just this stays put) -->
+    <div id="modal-step-waiting" hidden style="text-align:center;">
+      <div class="spinner"></div>
+      <h3>Check your phone</h3>
+      <p style="color:var(--color-text-muted);">Enter your M-Pesa PIN to complete the payment.</p>
+      <p class="badge badge-warning" id="modal-status-text">Waiting for confirmation…</p>
+      <button class="btn btn-secondary" id="modal-waiting-cancel-btn">Cancel</button>
+    </div>
+
+    <!-- Step 3: result -->
+    <div id="modal-step-result" hidden style="text-align:center;">
+      <div id="modal-result-icon" style="margin:0 auto 8px;"></div>
+    <style>
+      .result-icon{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;animation:pop-in .35s cubic-bezier(.34,1.56,.64,1);}
+      .result-success{background:var(--color-primary-soft);color:var(--color-primary);border:3px solid var(--color-primary);}
+      .result-failure{background:#f8d7da;color:#c0392b;border:3px solid #c0392b;}
+      @keyframes pop-in{0%{transform:scale(0);opacity:0;}70%{transform:scale(1.1);}100%{transform:scale(1);opacity:1;}}
+      @media (max-width:480px){#buy-modal-overlay .card{width:92vw;padding:20px;}}
+    </style>
+      <h3 id="modal-result-title"></h3>
+      <p id="modal-result-message" style="color:var(--color-text-muted);"></p>
+      <button class="btn" id="modal-close-btn">Great, thanks!</button>
+    </div>
+
+  </div>
+</div>
+<section id="reconnect" class="card" style="max-width:420px;margin:48px auto;">
+  <h2 style="margin-top:0; font-family:'Tangerine',cursive; font-size:2.2rem; font-weight:400;">Get connected another way</h2>
+
+  {% if messages %}
+    {% for message in messages %}
+      <p class="badge badge-{% if message.tags == 'error' %}danger{% elif message.tags == 'warning' %}warning{% else %}success{% endif %}"
+         style="display:block;padding:12px;margin-bottom:10px;">
+        {{ message }}
+      </p>
+    {% endfor %}
+  {% endif %}
+
+  <div style="margin-bottom:24px;">
+    <h3 style="font-size:1rem;margin-bottom:4px;">Already paid via M-Pesa?</h3>
+    <p style="color:var(--color-text-muted);font-size:.85rem;margin-top:0;">
+      Paste your M-Pesa code or the whole Mpesa message.
+    </p>
+    <form id="reconnect-form">
+      {% csrf_token %}
+      <input type="text" id="reconnect-code-input" name="code" placeholder="e.g. UFH3JT6LKQ or paste the whole SMS" required>
+      <button type="submit" class="btn" id="reconnect-submit-btn">Reconnect</button>
+    </form>
+    <div id="reconnect-status" hidden style="margin-top:12px;display:flex;align-items:center;gap:10px;">
+      <div class="spinner" id="reconnect-spinner" style="width:20px;height:20px;"></div>
+      <span id="reconnect-icon" hidden style="font-size:1.3rem;"></span>
+      <span id="reconnect-status-text" style="font-size:.9rem;"></span>
+    </div>
+  </div>
+
+
+  <div>
+    <h3 style="font-size:1rem;margin-bottom:4px;">Have a voucher code?</h3>
+    <p style="color:var(--color-text-muted);font-size:.85rem;margin-top:0;">
+      Enter the code and your phone number.
+    </p>
+    <form id="voucher-form">
+      {% csrf_token %}
+      <input type="text" id="voucher-code-input" name="voucher_code" placeholder="Voucher code" required>
+      <input type="tel" id="voucher-phone-input" name="voucher_phone" placeholder="0712345678" required>
+      <button type="submit" class="btn" id="voucher-submit-btn">Connect</button>
+    </form>
+    <div id="voucher-status" hidden style="margin-top:12px;display:flex;align-items:center;gap:10px;">
+      <div class="spinner" id="voucher-spinner" style="width:20px;height:20px;"></div>
+      <span id="voucher-icon" hidden style="font-size:1.3rem;"></span>
+      <span id="voucher-status-text" style="font-size:.9rem;"></span>
+    </div>
+  </div>
+
+</section>
+
+<!-- Recommendations / Customer Experience / Inquiry  lets a customer tell
+     us what they think, ask something, or request a callback even before
+     they've bought anything. Captures the same HOTSPOT_MAC used by the
+     buy/reconnect/voucher flows (hidden, never asked of the customer)
+     so staff can cross-reference it later; visible to every shareholder
+     and the Main Admin from the admin portal (core:feedback_list). -->
+<section id="feedback" class="card" style="max-width:420px;margin:24px auto;background:transparent !important;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);">
+  <h2 style="margin-top:0; font-family:'Tangerine',cursive; font-size:2.2rem; font-weight:400;">Recommendations &amp; Feedback</h2>
+  <p style="color:var(--color-text-muted);font-size:.85rem;margin-top:0;">
+    Tell us how your experience has been, or send a request  we'll call you back on the number you leave below.
+  </p>
+  <form id="feedback-form">
+    {% csrf_token %}
+    <input type="text" id="feedback-name-input" name="name" placeholder="Your name (optional)">
+    <input type="tel" id="feedback-phone-input" name="phone_number" placeholder="0712345678" required>
+    <textarea id="feedback-message-input" name="message" rows="3" placeholder="Your recommendation, experience, or question…" required style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);margin-bottom:12px;font-size:1rem;font-family:inherit;resize:vertical;"></textarea>
+    <button type="submit" class="btn" id="feedback-submit-btn" style="width:100%;">Send message</button>
+  </form>
+  <div id="feedback-status" hidden style="margin-top:12px;display:flex;align-items:center;gap:10px;">
+    <div class="spinner" id="feedback-spinner" style="width:20px;height:20px;"></div>
+    <span id="feedback-icon" hidden style="font-size:1.3rem;"></span>
+    <span id="feedback-status-text" style="font-size:.9rem;"></span>
+  </div>
+</section>
+
+<section id="shareholder-login" class="card" style="max-width:420px;margin:24px auto 48px;">
+  <h2 style="margin-top:0; font-family:'Tangerine',cursive; font-size:2.2rem; font-weight:400;">Admin Login</h2>
+ 
+  <form id="shareholder-login-form">
+    {% csrf_token %}
+    <input type="text" id="shareholder-username-input" name="username" placeholder="Username" required>
+    <input type="password" id="shareholder-password-input" name="password" placeholder="Password" required>
+    <button type="submit" class="btn" id="shareholder-login-submit-btn">Sign in</button>
+  </form>
+  <div id="shareholder-login-status" hidden style="margin-top:12px;display:flex;align-items:center;gap:10px;">
+    <div class="spinner" id="shareholder-login-spinner" style="width:20px;height:20px;"></div>
+    <span id="shareholder-login-icon" hidden style="font-size:1.3rem;"></span>
+    <span id="shareholder-login-status-text" style="font-size:.9rem;"></span>
+  </div>
+</section>
+
+
+<div class="toast-stack" id="connectionToastStack">
+  <div class="toast toast-plain" id="connectionToast">
+    <span class="toast-icon"><i class="bi bi-info-lg"></i></span>
+    <span class="toast-msg">Taking long? You have 10 extra minutes. Still offline? Enter your M-Pesa code below. We’re fixing the issue.
+</span>
+    <button class="toast-close" type="button" aria-label="Dismiss" id="connectionToastClose">&times;</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const overlay = document.getElementById('buy-modal-overlay');
+  const stepPhone = document.getElementById('modal-step-phone');
+  const stepSending = document.getElementById('modal-step-sending');
+  const stepWaiting = document.getElementById('modal-step-waiting');
+  const stepResult = document.getElementById('modal-step-result');
+  const packageNameEl = document.getElementById('modal-package-name');
+  const phoneInput = document.getElementById('modal-phone-input');
+  const phoneError = document.getElementById('modal-phone-error');
+  const statusText = document.getElementById('modal-status-text');
+  const resultIcon = document.getElementById('modal-result-icon');
+  const resultTitle = document.getElementById('modal-result-title');
+  const resultMessage = document.getElementById('modal-result-message');
+  const modalConnectBtn = document.getElementById('modal-connect-btn');
+  const modalResultConnectBtn = document.getElementById('modal-result-connect-btn');
+  const modalBrowseBtn = document.getElementById('modal-browse-btn');
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+  // Passed through by the router's login.html redirect  mac identifies
+  // this device so the agent knows which MAC to bypass on the router.
+  const HOTSPOT_MAC = '{{ hotspot_mac|escapejs }}';
+
+  let currentPackageId = null;
+  let pollTimer = null;
+  const POLL_INTERVAL_MS = 2500;
+  const MAX_WAIT_MS = 90000; // give up politely after 90s, not stuck forever
+  const HINT_AFTER_MS = 12000; // if still waiting this long, offer the M-Pesa code fallback
+
+  // Where to send the customer once they're actually online. Swap this
+  // for wherever you want  your site, WhatsApp, anything.
+  const SUCCESS_REDIRECT_URL = 'https://software-engineers.netlify.app/';
+  function redirectToSuccess() {
+    setTimeout(() => { window.location.href = SUCCESS_REDIRECT_URL; }, 2500);
+  }
+
+  function showStep(step) {
+    stepPhone.hidden = step !== 'phone';
+    stepSending.hidden = step !== 'sending';
+    stepWaiting.hidden = step !== 'waiting';
+    stepResult.hidden = step !== 'result';
+  }
+
+  // Accepts however the customer typed it  0712345678, 0712 345 678,
+  // 0712-345-678, +254712345678, 254712345678, 712345678  and normalizes
+  // to 2547XXXXXXXX. Mirrors apps/billing/utils.normalize_phone_number so
+  // the customer gets instant feedback, but the server re-validates
+  // regardless (this is a UX shortcut, not the source of truth).
+  function normalizePhoneNumber(raw) {
+    if (!raw) return null;
+    let digits = raw.replace(/\D/g, '');
+    if (digits.startsWith('0') && digits.length === 10) {
+      digits = '254' + digits.slice(1);
+    } else if (digits.startsWith('254') && digits.length === 12) {
+      // already correct
+    } else if (digits.length === 9 && (digits[0] === '7' || digits[0] === '1')) {
+      digits = '254' + digits;
+    } else {
+      return null;
+    }
+    return /^254[71]\d{8}$/.test(digits) ? digits : null;
+  }
+
+  function openModal(packageId, packageName) {
+    currentPackageId = packageId;
+    packageNameEl.textContent = 'Buy ' + packageName;
+    phoneInput.value = '';
+    phoneError.hidden = true;
+    showStep('phone');
+    overlay.hidden = false;
+    setTimeout(() => phoneInput.focus(), 50);
+  }
+
+  function closeModal() {
+    overlay.hidden = true;
+    if (pollTimer) clearTimeout(pollTimer);
+  }
+
+  document.querySelectorAll('.buy-btn').forEach(btn => {
+    btn.addEventListener('click', () => openModal(btn.dataset.packageId, btn.dataset.packageName));
+  });
+  document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
+  document.getElementById('modal-waiting-cancel-btn').addEventListener('click', closeModal);
+  document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+
+  document.getElementById('modal-pay-btn').addEventListener('click', async () => {
+    const normalized = normalizePhoneNumber(phoneInput.value);
+    if (!normalized) {
+      phoneError.textContent = 'Enter a valid Safaricom number, e.g. 0712345678';
+      phoneError.hidden = false;
+      return;
+    }
+    phoneError.hidden = true;
+
+    // Phase 1: actively sending the request (short dot-pulse).
+    showStep('sending');
+
+    try {
+      const res = await fetch(`/billing/buy/${currentPackageId}/`, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `phone_number=${encodeURIComponent(normalized)}&mac=${encodeURIComponent(HOTSPOT_MAC)}`,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.payment_id) {
+        showResult(false, 'Could not start payment', data.error || 'Please try again.');
+        return;
+      }
+      // Phase 2: request sent  now waiting on the customer to enter their PIN.
+      showStep('waiting');
+      statusText.textContent = 'Waiting for confirmation…';
+      pollPaymentStatus(data.payment_id, Date.now());
+    } catch (err) {
+      showResult(false, 'Connection problem', 'Check your internet connection and try again.');
+    }
+  });
+
+  async function pollPaymentStatus(paymentId, startedAt) {
+    if (Date.now() - startedAt > MAX_WAIT_MS) {
+      showResult(false, 'Taking longer than expected',
+        "If you completed the M-Pesa prompt, your payment likely went through. Scroll down and paste your M-Pesa code or the whole confirmation message in the box below to connect   you won't be charged again.");
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`
+      );
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        if (data.connected) {
+          showResult(true, "You're connected!", "Enjoy your Wi-Fi   taking you there now…");
+          redirectToSuccess();
+        } else {
+          // Payment's done, router's still catching up   keep the waiting
+          // UI up, but past a certain point pre-fill the code they already
+          // paid with down at the reconnect button, so they can just tap
+          // it instead of retyping/pasting anything.
+          if (Date.now() - startedAt > HINT_AFTER_MS) {
+            statusText.textContent = 'Still connecting… tap GET CONNECTED below to try again.';
+            prefillReconnect(data.receipt);
+          } else {
+            statusText.textContent = 'Payment received   connecting your device…';
+          }
+          pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+        }
+      } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {       showResult(false, 'Payment not completed', 'The transaction was ' + data.status.toLowerCase() + '. Try again.');
+      } else {
+        pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+      }
+    } catch (err) {
+      pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+    }
+  }
+
+  let reconnectPrefilled = false;
+  function prefillReconnect(receipt) {
+    if (!receipt || reconnectPrefilled) return;
+    const input = document.getElementById('reconnect-code-input');
+    const btn = document.getElementById('reconnect-submit-btn');
+    if (input && !input.value) input.value = receipt;
+    if (btn) btn.textContent = 'GET CONNECTED';
+    reconnectPrefilled = true;
+    document.getElementById('reconnect')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function showResult(success, title, message) {
+    resultIcon.innerHTML = success
+      ? '<div class="result-icon result-success"><i class="bi bi-check-lg"></i></div>'
+      : '<div class="result-icon result-failure"><i class="bi bi-x-lg"></i></div>';
+    resultTitle.textContent = title;
+    resultMessage.textContent = message;
+    showStep('result');
+  }
+
+  // --- Reconnect by M-Pesa code ---
+  const reconnectForm = document.getElementById('reconnect-form');
+  const reconnectStatus = document.getElementById('reconnect-status');
+  const reconnectSpinner = document.getElementById('reconnect-spinner');
+  const reconnectIcon = document.getElementById('reconnect-icon');
+  const reconnectStatusText = document.getElementById('reconnect-status-text');
+  const reconnectSubmitBtn = document.getElementById('reconnect-submit-btn');
+  let reconnectPollTimer = null;
+
+  function setReconnectStatus(mode, text) {
+    reconnectStatus.hidden = false;
+    reconnectSpinner.hidden = mode !== 'loading';
+    reconnectIcon.hidden = mode === 'loading';
+    if (mode === 'success') {
+      reconnectIcon.innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--color-primary);"></i>';
+    } else if (mode === 'error') {
+      reconnectIcon.innerHTML = '<i class="bi bi-x-circle-fill" style="color:#c0392b;"></i>';
+    }
+    reconnectStatusText.textContent = text;
+  }
+
+  function pollReconnectStatus(paymentId, startedAt) {
+        if (Date.now() - startedAt > MAX_WAIT_MS) {
+      showResult(false, 'Taking longer than expected',
+        "If you completed the M-Pesa prompt, your payment likely went through   your code is already filled in below. Just tap GET CONNECTED. You won't be charged again.");
+      fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)
+        .then((r) => r.json())
+        .then((d) => prefillReconnect(d.receipt))
+        .catch(() => {});
+      return;
+    }
+    fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.connected) {
+          setReconnectStatus('success', 'Connected! Taking you there now…');
+          reconnectSubmitBtn.disabled = false;
+          redirectToSuccess();
+        } else {
+          setReconnectStatus('loading', 'Connecting your device…');
+          reconnectPollTimer = setTimeout(() => pollReconnectStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+        }
+      })
+      .catch(() => {
+        reconnectPollTimer = setTimeout(() => pollReconnectStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+      });
+  }
+
+  if (reconnectForm) {
+    reconnectForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (reconnectPollTimer) clearTimeout(reconnectPollTimer);
+      reconnectSubmitBtn.disabled = true;
+      setReconnectStatus('loading', 'Checking your payment…');
+
+      try {
+        const res = await fetch('{% url "billing:reconnect" %}', {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: `code=${encodeURIComponent(document.getElementById('reconnect-code-input').value)}&mac=${encodeURIComponent(HOTSPOT_MAC)}`,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setReconnectStatus('error', data.error || 'Could not reconnect. Please try again.');
+          reconnectSubmitBtn.disabled = false;
+          return;
+        }
+        setReconnectStatus('loading', 'Connecting your device…');
+        pollReconnectStatus(data.payment_id, Date.now());
+      } catch (err) {
+        setReconnectStatus('error', 'kindly click reconnect again atleast 3times ,sorry for that then wait u are connected fully... ');
+        reconnectSubmitBtn.disabled = false;
+      }
+    });
+  }
+
+  // Voucher redemption   same loading-spinner-then-poll pattern as the
+  // M-Pesa reconnect box above.
+  const voucherForm = document.getElementById('voucher-form');
+  const voucherStatus = document.getElementById('voucher-status');
+  const voucherSpinner = document.getElementById('voucher-spinner');
+  const voucherIcon = document.getElementById('voucher-icon');
+  const voucherStatusText = document.getElementById('voucher-status-text');
+  const voucherSubmitBtn = document.getElementById('voucher-submit-btn');
+  let voucherPollTimer = null;
+
+  function setVoucherStatus(mode, text) {
+    voucherStatus.hidden = false;
+    voucherSpinner.hidden = mode !== 'loading';
+    voucherIcon.hidden = mode === 'loading';
+    if (mode === 'success') {
+      voucherIcon.innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--color-primary);"></i>';
+    } else if (mode === 'error') {
+      voucherIcon.innerHTML = '<i class="bi bi-x-circle-fill" style="color:#c0392b;"></i>';
+    }
+    voucherStatusText.textContent = text;
+  }
+
+  function pollVoucherStatus(voucherId, startedAt) {
+    if (Date.now() - startedAt > MAX_WAIT_MS) {
+      setVoucherStatus('error', "Taking longer than expected   try tapping Connect again.");
+      voucherSubmitBtn.disabled = false;
+      return;
+    }
+    fetch(`/vouchers/${voucherId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.connected) {
+          setVoucherStatus('success', 'Connected! Taking you there now…');
+          voucherSubmitBtn.disabled = false;
+          redirectToSuccess();
+        } else {
+          setVoucherStatus('loading', 'Connecting your device…');
+          voucherPollTimer = setTimeout(() => pollVoucherStatus(voucherId, startedAt), POLL_INTERVAL_MS);
+        }
+      })
+      .catch(() => {
+        voucherPollTimer = setTimeout(() => pollVoucherStatus(voucherId, startedAt), POLL_INTERVAL_MS);
+      });
+  }
+
+  if (voucherForm) {
+    voucherForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (voucherPollTimer) clearTimeout(voucherPollTimer);
+      voucherSubmitBtn.disabled = true;
+      setVoucherStatus('loading', 'Checking your voucher…');
+
+      try {
+        const res = await fetch('{% url "vouchers:redeem" %}', {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: `voucher_code=${encodeURIComponent(document.getElementById('voucher-code-input').value)}` +
+                `&voucher_phone=${encodeURIComponent(document.getElementById('voucher-phone-input').value)}` +
+                `&mac=${encodeURIComponent(HOTSPOT_MAC)}`,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setVoucherStatus('error', data.error || 'Could not redeem voucher. Please try again.');
+          voucherSubmitBtn.disabled = false;
+          return;
+        }
+        setVoucherStatus('loading', data.warning || 'Connecting your device…');
+        pollVoucherStatus(data.voucher_id, Date.now());
+      } catch (err) {
+        setVoucherStatus('error', 'Something went wrong. Please try again.');
+        voucherSubmitBtn.disabled = false;
+      }
+    });
+  }
+
+  // --- Shareholder / Main Admin login  stays right here on the landing
+  // page; a successful sign-in moves on to the revenue portal the server
+  // sends back, an invalid one just shows an inline message, no navigation
+  // away from this page either way. ---
+  const shLoginForm = document.getElementById('shareholder-login-form');
+  const shLoginStatus = document.getElementById('shareholder-login-status');
+  const shLoginSpinner = document.getElementById('shareholder-login-spinner');
+  const shLoginIcon = document.getElementById('shareholder-login-icon');
+  const shLoginStatusText = document.getElementById('shareholder-login-status-text');
+  const shLoginSubmitBtn = document.getElementById('shareholder-login-submit-btn');
+
+  function setShareholderLoginStatus(mode, text) {
+    shLoginStatus.hidden = false;
+    shLoginSpinner.hidden = mode !== 'loading';
+    shLoginIcon.hidden = mode === 'loading';
+    if (mode === 'success') {
+      shLoginIcon.innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--color-primary);"></i>';
+    } else if (mode === 'error') {
+      shLoginIcon.innerHTML = '<i class="bi bi-x-circle-fill" style="color:#c0392b;"></i>';
+    }
+    shLoginStatusText.textContent = text;
+  }
+
+  if (shLoginForm) {
+    shLoginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      shLoginSubmitBtn.disabled = true;
+      setShareholderLoginStatus('loading', 'Signing you in…');
+
+      try {
+        const res = await fetch('{% url "core:shareholder_login" %}', {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: `username=${encodeURIComponent(document.getElementById('shareholder-username-input').value)}` +
+                `&password=${encodeURIComponent(document.getElementById('shareholder-password-input').value)}`,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setShareholderLoginStatus('error', data.error || 'Could not sign in. Please try again.');
+          shLoginSubmitBtn.disabled = false;
+          return;
+        }
+        setShareholderLoginStatus('success', 'Signed in   taking you to your revenue portal…');
+        window.location.href = data.redirect;
+      } catch (err) {
+        setShareholderLoginStatus('error', 'Something went wrong. Please try again.');
+        shLoginSubmitBtn.disabled = false;
+      }
+    });
+  }
+
+  // --- Recommendations / Customer Experience / Inquiry ---
+  const feedbackForm = document.getElementById('feedback-form');
+  const feedbackStatus = document.getElementById('feedback-status');
+  const feedbackSpinner = document.getElementById('feedback-spinner');
+  const feedbackIcon = document.getElementById('feedback-icon');
+  const feedbackStatusText = document.getElementById('feedback-status-text');
+  const feedbackSubmitBtn = document.getElementById('feedback-submit-btn');
+
+  function setFeedbackStatus(mode, text) {
+    feedbackStatus.hidden = false;
+    feedbackSpinner.hidden = mode !== 'loading';
+    feedbackIcon.hidden = mode === 'loading';
+    if (mode === 'success') {
+      feedbackIcon.innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--color-primary);"></i>';
+    } else if (mode === 'error') {
+      feedbackIcon.innerHTML = '<i class="bi bi-x-circle-fill" style="color:#c0392b;"></i>';
+    }
+    feedbackStatusText.textContent = text;
+  }
+
+  if (feedbackForm) {
+    feedbackForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      feedbackSubmitBtn.disabled = true;
+      setFeedbackStatus('loading', 'Sending…');
+
+      try {
+        const res = await fetch('{% url "core:submit_feedback" %}', {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: `name=${encodeURIComponent(document.getElementById('feedback-name-input').value)}` +
+                `&phone_number=${encodeURIComponent(document.getElementById('feedback-phone-input').value)}` +
+                `&message=${encodeURIComponent(document.getElementById('feedback-message-input').value)}` +
+                `&mac=${encodeURIComponent(HOTSPOT_MAC)}`,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setFeedbackStatus('error', data.error || 'Could not send your message. Please try again.');
+          feedbackSubmitBtn.disabled = false;
+          return;
+        }
+        setFeedbackStatus('success', "Thanks! We've received your message and will get back to you.");
+        feedbackForm.reset();
+        feedbackSubmitBtn.disabled = false;
+      } catch (err) {
+        setFeedbackStatus('error', 'Something went wrong. Please try again.');
+        feedbackSubmitBtn.disabled = false;
+      }
+    });
+  }
+
+  // --- Connection-delay toast: shows once, auto-dismisses, or closes by hand ---
+  const connectionToast = document.getElementById('connectionToast');
+  const connectionToastClose = document.getElementById('connectionToastClose');
+  if (connectionToast) {
+    function dismissConnectionToast() {
+      connectionToast.classList.add('toast-leaving');
+      setTimeout(() => connectionToast.remove(), 350);
+    }
+    connectionToastClose.addEventListener('click', dismissConnectionToast);
+    setTimeout(dismissConnectionToast, 9000);
+  }
+})();
+</script>
+{% endblock %}

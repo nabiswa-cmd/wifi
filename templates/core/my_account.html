@@ -1,0 +1,98 @@
+{% extends "core/admin_base.html" %}
+{% block title %}My Account &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}My Account{% endblock %}
+{% block admin_content %}
+
+<div class="card" style="max-width:520px;">
+  <h3 style="margin-top:0;">Your Details</h3>
+  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
+    Update your name, email, and the default payout details used to pre-fill every new
+    withdrawal request. Your share quantity, contribution, and percentage aren't editable here 
+    see "Increase Your Shares" on the <a href="{% url 'core:revenue_dashboard' %}">Revenue</a> page.
+  </p>
+  <form method="post" action="{% url 'core:my_account' %}">
+    {% csrf_token %}
+    <input type="hidden" name="form" value="profile">
+
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Full name</label>
+    <input type="text" name="full_name" value="{{ my_shareholder.full_name|default:'' }}" placeholder="Your full name">
+
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Email</label>
+    <input type="email" name="email" value="{{ request.user.email }}" placeholder="you@example.com">
+
+    <label style="font-size:.8rem; color:var(--color-text-muted); margin-top:10px; display:block;">Default payout phone (M-Pesa)</label>
+    <input type="tel" name="payment_phone" value="{{ my_shareholder.payment_phone|default:'' }}" placeholder="07XXXXXXXX">
+
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Default payout account name</label>
+    <input type="text" name="payment_account_name" value="{{ my_shareholder.payment_account_name|default:'' }}" placeholder="Name registered to that number">
+
+    <button class="btn" type="submit" style="margin-top:10px;">Save Details</button>
+  </form>
+  {% if not my_shareholder %}
+  <p style="color:var(--color-text-muted); font-size:.8rem; margin-top:10px;">
+    No shareholder record is linked to your account yet  ask the Main Admin to set this up.
+    You can still change your password below.
+  </p>
+  {% endif %}
+</div>
+
+<div class="card" style="max-width:520px; margin-top:14px;">
+  <h3 style="margin-top:0;">Change Password</h3>
+  <form method="post" action="{% url 'core:my_account' %}">
+    {% csrf_token %}
+    <input type="hidden" name="form" value="password">
+
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Current password</label>
+    <input type="password" name="old_password" required>
+
+    <label style="font-size:.8rem; color:var(--color-text-muted);">New password</label>
+    <input type="password" name="new_password1" required>
+
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Confirm new password</label>
+    <input type="password" name="new_password2" required>
+
+    <button class="btn" type="submit" style="margin-top:10px;">Change Password</button>
+  </form>
+  <p style="color:var(--color-text-muted); font-size:.78rem; margin-top:8px;">
+    You'll stay signed in after changing it. You'll still be logged out automatically after
+    1 hour of inactivity, same as always.
+  </p>
+</div>
+
+{% if my_shareholder %}
+<div class="card" style="max-width:640px; margin-top:14px;">
+  <h3 style="margin-top:0;">Your Share Snapshot</h3>
+  <table style="width:100%;">
+    <tr><td>Share quantity</td><td style="text-align:right;">{{ my_shareholder.share_quantity }}</td></tr>
+    <tr><td>Contribution</td><td style="text-align:right;">{{ branding.currency }} {{ my_shareholder.contribution }}</td></tr>
+    <tr><td>Share percentage</td><td style="text-align:right;">{{ my_shareholder.percentage }}%</td></tr>
+  </table>
+  <p style="color:var(--color-text-muted); font-size:.78rem; margin-top:8px;">
+    Not editable here  the only way these change is an approved share-increase request.
+    <a href="{% url 'core:revenue_dashboard' %}#increase-shares">Request an increase &rarr;</a>
+  </p>
+
+  {% if my_share_increase_requests %}
+  <h4 style="margin:16px 0 6px;">Your share-increase requests</h4>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">+Shares</th><th>Contribution</th><th>Status</th><th>Requested</th></tr></thead>
+    <tbody>
+      {% for r in my_share_increase_requests %}
+      <tr>
+        <td style="text-align:center;">{{ r.share_quantity }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ r.contribution_amount }}</td>
+        <td>
+          {% if r.status == 'PENDING' %}<span class="badge badge-warning">Pending</span>
+          {% elif r.status == 'APPROVED' %}<span class="badge badge-success">Approved</span>
+          {% else %}<span class="badge badge-danger">Rejected{% if r.rejection_reason %}: {{ r.rejection_reason }}{% endif %}</span>{% endif %}
+        </td>
+        <td>{{ r.created_at|date:"d M Y H:i" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

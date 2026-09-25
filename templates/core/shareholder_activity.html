@@ -1,0 +1,43 @@
+{% extends "core/admin_base.html" %}
+{% block title %}Shareholder Activity &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}Shareholder Activity (Main Admin only){% endblock %}
+{% block admin_content %}
+
+<div class="card">
+  <h3 style="margin-top:0;">Shareholders  : last login</h3>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Shareholder</th><th>Username</th><th>Last Login</th><th>Active</th></tr></thead>
+    <tbody>
+      {% for sh in shareholders %}
+      <tr>
+        <td>{{ sh }}</td>
+        <td>{{ sh.user.username }}</td>
+        <td>{{ sh.user.last_login|date:"d M Y H:i"|default:"Never logged in" }}</td>
+        <td>{% if sh.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-danger">Inactive</span>{% endif %}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4">No shareholders on file yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-top:14px;">
+  <h3 style="margin-top:0;">Recent revenue-portal logins</h3>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">User</th><th>Role</th><th>IP</th><th>When</th></tr></thead>
+    <tbody>
+      {% for entry in login_history %}
+      <tr>
+        <td>{{ entry.actor }}</td>
+        <td>{{ entry.new_value.role }}</td>
+        <td>{{ entry.ip_address|default:" " }}</td>
+        <td>{{ entry.created_at|date:"d M Y H:i" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4">No logins recorded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "core/admin_base.html" %}
+{% block title %}Customer Feedback &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}Customer Feedback &amp; Recommendations{% endblock %}
+{% block admin_content %}
+
+<div class="card">
+  <h3 style="margin-top:0;">Recommendations, experience &amp; inquiries</h3>
+
+  <table style="width:100%;">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Name</th>
+        <th style="text-align:left;">Phone</th>
+        <th style="text-align:left;">Message</th>
+        <th>MAC Address</th>
+        <th>Received</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in feedback %}
+      <tr>
+        <td data-label="Name">{{ item.name|default:" " }}</td>
+        <td data-label="Phone"><a href="tel:{{ item.phone_number }}">{{ item.phone_number }}</a></td>
+        <td data-label="Message" style="white-space:normal; min-width:220px;">{{ item.message }}</td>
+        <td data-label="MAC Address">{{ item.mac_address|default:" " }}</td>
+        <td data-label="Received">{{ item.created_at|date:"d M Y H:i" }}</td>
+        <td data-label="Status">
+          {% if item.is_contacted %}
+            <span class="badge badge-success">Contacted</span>
+          {% else %}
+            <span class="badge badge-warning">New</span>
+          {% endif %}
+        </td>
+        <td data-label="">
+          <form method="post" action="{% url 'core:toggle_feedback_contacted' item.id %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secondary" style="padding:6px 10px; font-size:.78rem;">
+              {% if item.is_contacted %}Mark as new{% else %}Mark contacted{% endif %}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7">No customer feedback yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

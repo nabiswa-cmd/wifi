@@ -1,0 +1,117 @@
+{% extends "core/admin_base.html" %}
+{% block title %}Dashboard &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}Dashboard{% endblock %}
+{% block admin_content %}
+<div class="card" style="margin-bottom:12px;">
+  <h2 style="margin:0; font-family:'Tangerine',cursive; font-size:2rem; font-weight:400;">{{ greeting }}, {{ display_name }} 👋</h2>
+</div>
+
+<div class="grid">
+  <div class="card"><h3>Total Customers</h3><p class="price">{{ total_customers }}</p></div>
+  <div class="card"><h3>Active Customers</h3><p class="price">{{ active_customers }}</p></div>
+  <div class="card"><h3>Active Users</h3><p class="price">{{ active_packages }}</p></div>
+  <div class="card"><h3>Online Users</h3><p class="price">{{ online_users }}</p></div>
+  <div class="card"><h3>Today's Revenue</h3><p class="price">{{ branding.currency }} {{ todays_revenue }}</p></div>
+  <div class="card"><h3>Today's Payments</h3><p class="price">{{ todays_payments }}</p></div>
+  <div class="card"><h3>Successful Payments</h3><p class="price">{{ successful_payments }}</p></div>
+  <div class="card"><h3>Failed Payments</h3><p class="price">{{ failed_payments }}</p></div>
+  <div class="card"><h3>Pending Payments</h3><p class="price">{{ pending_payments }}</p></div>
+  
+  <div class="card"><h3>Expired Customers</h3><p class="price">{{ expired_customers }}</p></div>
+  <div class="card"><h3>Today's Sessions</h3><p class="price">{{ todays_sessions }}</p></div>
+</div>
+<div class="grid" style="grid-template-columns: 1fr 1fr;">
+  <div class="card">
+    <h3>Revenue last 14 days</h3>
+    <canvas id="revenueChart" height="220"></canvas>
+  </div>
+  <div class="card">
+    <h3>Connections last 14 days</h3>
+    <canvas id="sessionsChart" height="220"></canvas>
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px;">
+  <h3>Monthly revenue</h3>
+  <canvas id="monthlyChart" height="180"></canvas>
+</div>
+
+{{ chart_labels|json_script:"chart-labels" }}
+{{ chart_revenue|json_script:"chart-revenue" }}
+{{ chart_sessions|json_script:"chart-sessions" }}
+{{ monthly_labels|json_script:"monthly-labels" }}
+{{ monthly_totals|json_script:"monthly-totals" }}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+  const chartLabels = JSON.parse(document.getElementById('chart-labels').textContent);
+  const chartRevenue = JSON.parse(document.getElementById('chart-revenue').textContent);
+  const chartSessions = JSON.parse(document.getElementById('chart-sessions').textContent);
+
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const gridColor = cssVar('--color-border');
+  const textColor = cssVar('--color-text-muted');
+
+  new Chart(document.getElementById('revenueChart'), {
+    type: 'line',
+    data: {
+      labels: chartLabels,
+      datasets: [{
+        label: 'Revenue ({{ branding.currency }})',
+        data: chartRevenue,
+        borderColor: cssVar('--color-primary'),
+        backgroundColor: cssVar('--color-primary'),
+        tension: 0.25,
+        fill: false,
+      }],
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+      },
+      plugins: { legend: { labels: { color: textColor } } },
+    },
+  });
+
+  new Chart(document.getElementById('sessionsChart'), {
+    type: 'bar',
+    data: {
+      labels: chartLabels,
+      datasets: [{
+        label: 'Devices connected',
+        data: chartSessions,
+        backgroundColor: cssVar('--color-secondary'),
+      }],
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+      },
+      plugins: { legend: { labels: { color: textColor } } },
+    },
+  });
+
+  const monthlyLabels = JSON.parse(document.getElementById('monthly-labels').textContent);
+  const monthlyTotals = JSON.parse(document.getElementById('monthly-totals').textContent);
+  new Chart(document.getElementById('monthlyChart'), {
+    type: 'bar',
+    data: {
+      labels: monthlyLabels,
+      datasets: [{
+        label: 'Revenue ({{ branding.currency }})',
+        data: monthlyTotals,
+        backgroundColor: cssVar('--color-primary'),
+      }],
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+      },
+      plugins: { legend: { labels: { color: textColor } } },
+    },
+  });
+</script>
+{% endblock %}

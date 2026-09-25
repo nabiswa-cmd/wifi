@@ -1,0 +1,389 @@
+{% extends "core/admin_base.html" %}
+{% block title %}Revenue &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}Revenue{% endblock %}
+{% block admin_content %}
+
+<div class="card" style="margin-bottom:12px;">
+  <h2 style="margin:0; font-family:'Tangerine',cursive; font-size:2rem; font-weight:400;">{{ greeting }}, {{ display_name }} 👋</h2>
+</div>
+
+<div class="grid">
+  <div class="card"><h3>Today's Revenue</h3><p class="price">{{ branding.currency }} {{ todays_revenue }}</p></div>
+  <div class="card"><h3>Today's Successful Payments</h3><p class="price">{{ todays_payment_count }}</p></div>
+  <div class="card"><h3>{{ current_month_label }} Revenue</h3><p class="price">{{ branding.currency }} {{ company_revenue }}</p></div>
+  <div class="card"><h3>{{ current_month_label }} Payments</h3><p class="price">{{ month_payment_count }}</p></div>
+  <div class="card">
+    <h3>Growth vs Previous Month</h3>
+    <p class="price" style="{% if growth_pct < 0 %}color:#f85149{% else %}color:#3fb950{% endif %}">
+      {% if growth_pct > 0 %}+{% endif %}{{ growth_pct }}%
+    </p>
+  </div>
+  <div class="card"><h3>Previous Month Revenue</h3><p class="price">{{ branding.currency }} {{ prev_month_revenue }}</p></div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1fr; margin-top:4px;">
+  <div class="card">
+    <h3>Company Revenue And Distributable Profit</h3>
+    <table style="width:100%; margin-top:8px;">
+      <tr><td>Monthly Revenue, {{ current_month_label }}</td><td style="text-align:right;">{{ branding.currency }} {{ company_revenue }}</td></tr>
+      <tr><td>Subscription Cost</td><td style="text-align:right;">&minus; {{ branding.currency }} {{ subscription_cost }}</td></tr>
+      <tr style="font-weight:700; border-top:1px solid var(--color-border);"><td>Distributable Profit</td><td style="text-align:right;">{{ branding.currency }} {{ distributable_profit }}</td></tr>
+    </table>
+  </div>
+</div>
+
+{% if is_main_admin %}
+<div class="card" style="margin-top:12px;">
+  <h3>Total Capital Invested</h3>
+  
+  <form method="post" action="{% url 'core:update_total_capital' %}" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    {% csrf_token %}
+    <input type="number" step="0.01" min="0" name="total_capital" value="{{ total_capital }}" style="max-width:220px;">
+    <button class="btn" type="submit">Save</button>
+    <span style="color:var(--color-text-muted); font-size:.85rem;">Current: {{ branding.currency }} {{ total_capital }}</span>
+  </form>
+</div>
+
+<div class="card" style="margin-top:12px;">
+  <h3>Shareholder Distribution</h3>
+  <table style="width:100%;">
+    <thead>
+      <tr><th style="text-align:left;">Shareholder</th><th>Shares</th><th>Contribution</th><th>%</th><th>Earnings ({{ current_month_label }})</th></tr>
+    </thead>
+    <tbody>
+      {% for row in shareholder_rows %}
+      <tr>
+        <td>{{ row.shareholder }}</td>
+        <td style="text-align:center;">{{ row.shareholder.share_quantity }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ row.shareholder.contribution }}</td>
+        <td style="text-align:center;">{{ row.shareholder.percentage }}%</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ row.earnings }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5">No shareholders on file yet  : add them in Django Admin under Billing &rarr; Shareholders.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  
+</div>
+
+<div class="card" style="margin-top:12px;" id="withdrawal-requests">
+  <h3 style="margin-top:0;">Withdrawal Requests</h3>
+  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
+    Approving means the money has already been sent </p>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Shareholder</th><th>Amount</th><th>Send to</th><th>Note</th><th>Requested</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for w in pending_withdrawals %}
+      <tr>
+        <td>{{ w.shareholder }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ w.amount }}</td>
+        <td>{{ w.payment_phone }}{% if w.payment_account_name %} &middot; {{ w.payment_account_name }}{% endif %}</td>
+        <td>{{ w.note|default:" " }}</td>
+        <td>{{ w.created_at|date:"d M Y H:i" }}</td>
+        <td style="white-space:nowrap;">
+          <form method="post" action="{% url 'core:decide_withdrawal' w.id %}" style="display:inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="approve">
+            <button class="btn" type="submit" style="padding:6px 10px; font-size:.8rem;">Approve &amp; mark paid</button>
+          </form>
+          <form method="post" action="{% url 'core:decide_withdrawal' w.id %}" style="display:inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="reject">
+            <button class="btn btn-secondary" type="submit" style="padding:6px 10px; font-size:.8rem;">Reject</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">No withdrawal requests awaiting a decision.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if recent_withdrawal_decisions %}
+  <h4 style="margin:16px 0 6px;">Recent decisions</h4>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Shareholder</th><th>Amount</th><th>Status</th><th>Decided by</th><th>When</th></tr></thead>
+    <tbody>
+      {% for w in recent_withdrawal_decisions %}
+      <tr>
+        <td>{{ w.shareholder }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ w.amount }}</td>
+        <td>{% if w.status == 'PAID' %}<span class="badge badge-success">Paid</span>{% else %}<span class="badge badge-danger">Rejected{% if w.rejection_reason %}: {{ w.rejection_reason }}{% endif %}</span>{% endif %}</td>
+        <td>{{ w.decided_by }}</td>
+        <td>{{ w.decided_at|date:"d M Y H:i" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:12px;" id="share-increase-requests">
+  <h3 style="margin-top:0;">Share Increase Requests</h3>
+  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
+    Approving grows Total Capital Invested by the contribution amount, and every shareholder's
+    percentage recalculates against the new total.
+  </p>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Shareholder</th><th>+Shares</th><th>Contribution</th><th>Note</th><th>Requested</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for r in pending_share_increases %}
+      <tr>
+        <td>{{ r.shareholder }}</td>
+        <td style="text-align:center;">{{ r.share_quantity }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ r.contribution_amount }}</td>
+        <td>{{ r.note|default:" " }}</td>
+        <td>{{ r.created_at|date:"d M Y H:i" }}</td>
+        <td style="white-space:nowrap;">
+          <form method="post" action="{% url 'core:decide_share_increase' r.id %}" style="display:inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="approve">
+            <button class="btn" type="submit" style="padding:6px 10px; font-size:.8rem;">Approve</button>
+          </form>
+          <form method="post" action="{% url 'core:decide_share_increase' r.id %}" style="display:inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="reject">
+            <button class="btn btn-secondary" type="submit" style="padding:6px 10px; font-size:.8rem;">Reject</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">No share-increase requests awaiting a decision.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if recent_share_increase_decisions %}
+  <h4 style="margin:16px 0 6px;">Recent decisions</h4>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Shareholder</th><th>+Shares</th><th>Contribution</th><th>Status</th><th>Decided by</th><th>When</th></tr></thead>
+    <tbody>
+      {% for r in recent_share_increase_decisions %}
+      <tr>
+        <td>{{ r.shareholder }}</td>
+        <td style="text-align:center;">{{ r.share_quantity }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ r.contribution_amount }}</td>
+        <td>{% if r.status == 'APPROVED' %}<span class="badge badge-success">Approved</span>{% else %}<span class="badge badge-danger">Rejected{% if r.rejection_reason %}: {{ r.rejection_reason }}{% endif %}</span>{% endif %}</td>
+        <td>{{ r.decided_by }}</td>
+        <td>{{ r.decided_at|date:"d M Y H:i" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% else %}
+<div class="card" style="margin-top:12px;">
+  <h3>Total Capital Invested</h3>
+  <p class="price">{{ branding.currency }} {{ total_capital }}</p>
+  <p style="color:var(--color-text-muted); font-size:.8rem;">Set by the Main Admin  not editable here.</p>
+</div>
+
+<div class="card" style="margin-top:12px;">
+  <h3>Other Shareholders</h3>
+ 
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Shareholder</th><th>%</th></tr></thead>
+    <tbody>
+      {% for sh in all_shareholders %}
+      <tr><td>{{ sh }}</td><td style="text-align:center;">{{ sh.percentage }}%</td></tr>
+      {% empty %}
+      <tr><td colspan="2">No shareholders on file yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if my_shareholder %}
+<div class="card" style="margin-top:12px;" id="increase-shares">
+  <h3 style="margin-top:0;">Increase Your Shares</h3>
+  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
+    Contribute more capital to grow your share quantity and percentage. Every request needs the
+    Main Admin's approval before it takes effect  your share quantity, contribution and total
+    capital invested stay as they are until then.
+  </p>
+  <button class="btn" id="toggle-increase-form" type="button">Request Share Increase</button>
+  <form method="post" action="{% url 'core:request_share_increase' %}" id="increase-form" style="margin-top:14px; max-width:420px;" hidden>
+    {% csrf_token %}
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Additional shares wanted</label>
+    <input type="number" step="1" min="1" name="share_quantity" required>
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Contribution amount ({{ branding.currency }})</label>
+    <input type="number" step="0.01" min="0.01" name="contribution_amount" required>
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Note (optional)</label>
+    <input type="text" name="note" placeholder="Anything the Main Admin should know">
+    <button class="btn" type="submit" style="margin-top:8px;">Submit Request</button>
+  </form>
+  <script>
+    (function () {
+      var btn = document.getElementById('toggle-increase-form');
+      var form = document.getElementById('increase-form');
+      if (btn && form) {
+        btn.addEventListener('click', function () { form.hidden = !form.hidden; });
+      }
+    })();
+  </script>
+
+  {% if my_share_increase_requests %}
+  <h4 style="margin:18px 0 6px;">Your share-increase requests</h4>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">+Shares</th><th>Contribution</th><th>Status</th><th>Requested</th></tr></thead>
+    <tbody>
+      {% for r in my_share_increase_requests %}
+      <tr>
+        <td style="text-align:center;">{{ r.share_quantity }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ r.contribution_amount }}</td>
+        <td>
+          {% if r.status == 'PENDING' %}<span class="badge badge-warning">Pending</span>
+          {% elif r.status == 'APPROVED' %}<span class="badge badge-success">Approved</span>
+          {% else %}<span class="badge badge-danger">Rejected{% if r.rejection_reason %}: {{ r.rejection_reason }}{% endif %}</span>{% endif %}
+        </td>
+        <td>{{ r.created_at|date:"d M Y H:i" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:12px;" id="my-earnings">
+  <h3 style="margin-top:0;">Your Earnings</h3>
+  {% if my_shareholder %}
+  <table style="width:100%;">
+    <tr><td>Your share quantity</td><td style="text-align:right;">{{ my_shareholder.share_quantity }}</td></tr>
+    <tr><td>Your contribution</td><td style="text-align:right;">{{ branding.currency }} {{ my_shareholder.contribution }}</td></tr>
+    <tr><td>Your share percentage</td><td style="text-align:right;">{{ my_shareholder.percentage }}%</td></tr>
+    <tr style="font-weight:700;"><td>Your earnings ({{ current_month_label }})</td><td style="text-align:right;">{{ branding.currency }} {{ my_earnings }}</td></tr>
+    <tr style="font-weight:700; color:var(--color-primary);"><td>Available to withdraw</td><td style="text-align:right;">{{ branding.currency }} {{ available_to_withdraw }}</td></tr>
+  </table>
+  <p style="color:var(--color-text-muted); font-size:.78rem; margin-top:6px;">
+    Share quantity and contribution aren't editable directly  use "Increase Your Shares" above to
+    grow them, which needs Main Admin approval.
+  </p>
+
+  {% if available_to_withdraw > 0 %}
+  <button class="btn" id="toggle-withdraw-form" type="button" style="margin-top:8px;">Request Withdrawal</button>
+  <form method="post" action="{% url 'core:request_withdrawal' %}" id="withdraw-form" style="margin-top:14px; max-width:420px;" hidden>
+    {% csrf_token %}
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Amount ({{ branding.currency }}, up to {{ available_to_withdraw }})</label>
+    <input type="number" step="0.01" min="0.01" max="{{ available_to_withdraw }}" name="amount" required>
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Phone number to pay to (M-Pesa)</label>
+    <input type="tel" name="payment_phone" placeholder="07XXXXXXXX" value="{{ my_shareholder.payment_phone }}" required>
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Account name (optional)</label>
+    <input type="text" name="payment_account_name" placeholder="Name registered to that number" value="{{ my_shareholder.payment_account_name }}">
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Note (optional)</label>
+    <input type="text" name="note" placeholder="Anything the Company should know">
+    <p style="font-size:.78rem; color:var(--color-text-muted); margin-top:-4px;">
+      Payouts are sent manually for now, these are just the details the Company needs to send it to you.
+      Pre-filled from <a href="{% url 'core:my_account' %}">your account details</a>  change them here to
+      use different details just for this request, or edit your account to update them for good.
+    </p>
+    <button class="btn" type="submit">Submit Request</button>
+  </form>
+  <script>
+    (function () {
+      var btn = document.getElementById('toggle-withdraw-form');
+      var form = document.getElementById('withdraw-form');
+      if (btn && form) {
+        btn.addEventListener('click', function () { form.hidden = !form.hidden; });
+      }
+    })();
+  </script>
+  {% endif %}
+
+  {% if my_withdrawals %}
+  <h4 style="margin:18px 0 6px;">Your withdrawal history</h4>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Period</th><th>Amount</th><th>Sent to</th><th>Status</th><th>Requested</th></tr></thead>
+    <tbody>
+      {% for w in my_withdrawals %}
+      <tr>
+        <td>{{ w.period_start|date:"M Y" }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ w.amount }}</td>
+        <td>{{ w.payment_phone }}</td>
+        <td>
+          {% if w.status == 'PENDING' %}<span class="badge badge-warning">Pending</span>
+          {% elif w.status == 'PAID' %}<span class="badge badge-success">Paid</span>
+          {% else %}<span class="badge badge-danger">Rejected{% if w.rejection_reason %}: {{ w.rejection_reason }}{% endif %}</span>{% endif %}
+        </td>
+        <td>{{ w.created_at|date:"d M Y H:i" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% else %}
+  <p>No shareholder record is linked to your account yet, ask the Main Admin to set this up.</p>
+  {% endif %}
+</div>
+
+<div class="grid" style="grid-template-columns: 1fr 1fr; margin-top:12px;">
+  <div class="card">
+    <h3>Daily Revenue:{{ current_month_label }}</h3>
+    <canvas id="dailyRevenueChart" height="220"></canvas>
+  </div>
+  <div class="card">
+    <h3>Historical Monthly Revenue</h3>
+    <canvas id="historicalRevenueChart" height="220"></canvas>
+  </div>
+</div>
+
+{{ daily_chart_labels|json_script:"daily-labels" }}
+{{ daily_chart_revenue|json_script:"daily-revenue" }}
+{{ historical_labels|json_script:"historical-labels" }}
+{{ historical_totals|json_script:"historical-totals" }}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const gridColor = cssVar('--color-border');
+  const textColor = cssVar('--color-text-muted');
+
+  const dailyLabels = JSON.parse(document.getElementById('daily-labels').textContent);
+  const dailyRevenue = JSON.parse(document.getElementById('daily-revenue').textContent);
+  new Chart(document.getElementById('dailyRevenueChart'), {
+    type: 'line',
+    data: {
+      labels: dailyLabels,
+      datasets: [{
+        label: 'Revenue ({{ branding.currency }})',
+        data: dailyRevenue,
+        borderColor: cssVar('--color-primary'),
+        backgroundColor: cssVar('--color-primary'),
+        tension: 0.25,
+        fill: false,
+      }],
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+      },
+      plugins: { legend: { labels: { color: textColor } } },
+    },
+  });
+
+  const historicalLabels = JSON.parse(document.getElementById('historical-labels').textContent);
+  const historicalTotals = JSON.parse(document.getElementById('historical-totals').textContent);
+  new Chart(document.getElementById('historicalRevenueChart'), {
+    type: 'bar',
+    data: {
+      labels: historicalLabels,
+      datasets: [{
+        label: 'Revenue ({{ branding.currency }})',
+        data: historicalTotals,
+        backgroundColor: cssVar('--color-secondary'),
+      }],
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+      },
+      plugins: { legend: { labels: { color: textColor } } },
+    },
+  });
+</script>
+{% endblock %}

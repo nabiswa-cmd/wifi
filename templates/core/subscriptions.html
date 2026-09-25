@@ -1,0 +1,52 @@
+
+
+
+{% extends "core/admin_base.html" %}
+{% block admin_title %}Subscriptions{% endblock %}
+{% block admin_content %}
+<div style="padding:20px;">
+  <h2>Subscriptions</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Customer</th><th>Package</th><th>Receipt</th><th>Status</th><th>Source</th><th>Activated</th><th>Expires</th><th>Add time</th></tr></thead>
+      <tbody>
+        {% for s in subscriptions %}
+        <tr>
+          <td data-label="Customer">{{ s.customer.full_name }}</td>
+          <td data-label="Package">{{ s.package.name }}</td>
+          <td data-label="Receipt">{{ s.payment.mpesa_receipt_number|default:" " }}</td>
+          <td data-label="Status"><span class="badge {% if s.status == 'ACTIVE' %}badge-success{% elif s.status == 'PENDING' %}badge-warning{% else %}badge-danger{% endif %}">{{ s.status }}</span></td>
+          <td data-label="Source">{{ s.get_activation_source_display }}</td>
+          <td data-label="Activated">{{ s.activation_time|default:" " }}</td>
+          <td data-label="Expires">{{ s.expiry_time|default:" " }}</td>
+          <td data-label="Add time">
+            <form method="post" action="{% url 'core:add_subscription_time' s.id %}"
+                  style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;"
+                  onsubmit="const sel=this.querySelector('.reason-select'); const custom=this.querySelector('.reason-custom'); if(sel.value==='OTHER'){sel.name='';} else {custom.name='';}">
+              {% csrf_token %}
+              <select name="minutes" style="margin:0;padding:6px;font-size:.8rem;">
+                <option value="5">+5 min</option>
+                <option value="10">+10 min</option>
+                <option value="30" selected>+30 min</option>
+                <option value="60">+1 hour</option>
+              </select>
+              <select name="reason" class="reason-select" style="margin:0;padding:6px;font-size:.8rem;"
+                      onchange="const c=this.form.querySelector('.reason-custom'); const isOther=(this.value==='OTHER'); c.hidden=!isOther; c.required=isOther;">
+                <option value="Electricity">Electricity</option>
+                <option value="Failed connection">Failed connection</option>
+                <option value="OTHER">Other / Custom reason</option>
+              </select>
+              <input type="text" name="reason" class="reason-custom" placeholder="Enter reason"
+                     style="margin:0;padding:6px;font-size:.8rem;width:120px;" hidden>
+              <button class="btn" type="submit" style="padding:6px 10px;font-size:.75rem;">Add</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8">No subscriptions found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

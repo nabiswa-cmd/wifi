@@ -1,0 +1,121 @@
+{% extends "core/admin_base.html" %}
+{% block admin_title %}Vouchers{% endblock %}
+{% block admin_content %}
+
+{% if can_request %}
+<div class="card" style="max-width:480px;">
+  <h3 style="margin-top:0;">{% if is_main_admin %}Issue a voucher batch{% else %}Request a voucher batch{% endif %}</h3>
+  {% if not is_main_admin %}
+  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
+    Your request needs Main Admin approval before any codes are generated.
+  </p>
+  {% endif %}
+  {% if new_code %}
+    <p class="badge badge-success" style="display:block;padding:12px;font-size:.95rem;margin-bottom:12px;word-break:break-all;">
+      Code(s): <strong>{{ new_code }}</strong>
+    </p>
+  {% endif %}
+  {% if error %}
+    <p class="badge badge-danger" style="display:block;padding:12px;margin-bottom:12px;">{{ error }}</p>
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    <select name="package_id" required>
+      <option value="">Choose a package…</option>
+      {% for p in packages %}
+        <option value="{{ p.id }}">{{ p.name }}   {{ branding.currency }} {{ p.price|floatformat:"-2" }}</option>
+      {% endfor %}
+    </select>
+    <input type="number" name="quantity" placeholder="How many vouchers?" min="1" value="1" required>
+    <input type="number" name="expiry_days" placeholder="Expires in how many days? (optional)" min="1">
+    <button class="btn" type="submit">{% if is_main_admin %}Generate{% else %}Submit request{% endif %}</button>
+  </form>
+</div>
+{% else %}
+<div class="card" style="max-width:480px;">
+  <p>Voucher batches can only be requested by shareholders and issued by the Main Admin. You can still see redeemed/pending vouchers below.</p>
+</div>
+{% endif %}
+
+{% if is_main_admin %}
+<div class="card" style="margin-top:14px;">
+  <h3 style="margin-top:0;">Pending shareholder requests</h3>
+  <table>
+    <thead><tr><th>Batch</th><th>Package</th><th>Qty</th><th>Requested by</th><th>When</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for batch in pending_batches %}
+      <tr>
+        <td data-label="Batch">{{ batch.name }}</td>
+        <td data-label="Package">{{ batch.package.name }}</td>
+        <td data-label="Qty">{{ batch.quantity }}</td>
+        <td data-label="Requested by">{{ batch.created_by }}</td>
+        <td data-label="When">{{ batch.created_at|date:"d M Y H:i" }}</td>
+        <td data-label="Action">
+          <form method="post" action="{% url 'core:approve_voucher_batch' batch.id %}" style="display:inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="approve">
+            <button class="btn" type="submit" style="padding:4px 10px;font-size:.8rem;">Approve</button>
+          </form>
+          <form method="post" action="{% url 'core:approve_voucher_batch' batch.id %}" style="display:inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="reject">
+            <button class="btn btn-secondary" type="submit" style="padding:4px 10px;font-size:.8rem;">Reject</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">No pending requests.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:14px;">
+  <h3 style="margin-top:0;">Recent voucher batches</h3>
+  <table>
+    <thead><tr><th>Batch</th><th>Package</th><th>Qty</th><th>Requested by</th><th>Status</th><th>Approved by</th></tr></thead>
+    <tbody>
+      {% for batch in recent_batches %}
+      <tr>
+        <td data-label="Batch">{{ batch.name }}</td>
+        <td data-label="Package">{{ batch.package.name }}</td>
+        <td data-label="Qty">{{ batch.quantity }}</td>
+        <td data-label="Requested by">{{ batch.created_by }}</td>
+        <td data-label="Status">
+          <span class="badge {% if batch.approval_status == 'APPROVED' %}badge-success{% elif batch.approval_status == 'REJECTED' %}badge-danger{% else %}badge-warning{% endif %}">{{ batch.get_approval_status_display }}</span>
+        </td>
+        <td data-label="Approved by">{{ batch.approved_by|default:" " }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">No voucher batches yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-top:14px;">
+  <h3 style="margin-top:0;">Recent vouchers</h3>
+  <table>
+    <thead>
+      <tr><th>Code</th><th>Package</th><th>Status</th><th>Customer</th><th>Created</th><th>Expires</th></tr>
+    </thead>
+    <tbody>
+      {% for v in vouchers %}
+      <tr>
+        <td data-label="Code">{{ v.code }}</td>
+        <td data-label="Package">{{ v.package.name }}</td>
+        <td data-label="Status">
+          <span class="badge {% if v.status == 'UNUSED' %}badge-info{% elif v.status == 'USED' %}badge-success{% else %}badge-danger{% endif %}">{{ v.status }}</span>
+        </td>
+        <td data-label="Customer">{{ v.customer.full_name|default:" " }}</td>
+        <td data-label="Created">{{ v.created_at|date:"d M Y H:i" }}</td>
+        <td data-label="Expires">{{ v.expiry_date|date:"d M Y H:i"|default:"No expiry" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">No vouchers yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
