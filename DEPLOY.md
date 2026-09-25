@@ -47,6 +47,10 @@ these are identical:
 | `MPESA_ACCOUNT_TYPE` | `TILL` or `PAYBILL` | |
 | `INTERNAL_TASK_TOKEN` | (long random string) | only needed if you later expose the `/api/internal/...` HTTP variant instead of the worker |
 | `MIKROTIK_AGENT_API_KEY` | (long random string) | must match the on-site agent's `.env`   see `agent/README.md` |
+| `EMAIL_HOST_USER` | `yourcompany@gmail.com` | Gmail address the shareholder-portal emails send from |
+| `EMAIL_HOST_PASSWORD` | (16-char Gmail App Password) | Google Account → Security → App passwords; NOT your normal Gmail password |
+| `DEFAULT_FROM_EMAIL` | `yourcompany@gmail.com` | defaults to `EMAIL_HOST_USER` if unset |
+| `ADMIN_NOTIFICATION_EMAIL` | `nabiswaj8@gmail.com` | every new withdrawal request emails this address |
 
 `PORT` is set automatically by Railway   don't set it yourself.
 

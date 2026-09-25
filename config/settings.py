@@ -82,6 +82,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'apps.core.context_processors.branding',
                 'apps.core.context_processors.feedback_badge',
+                'apps.core.context_processors.admin_action_badges',
             ],
         },
     },
@@ -165,6 +166,34 @@ MPESA_TRANSACTION_TYPE = (
 # The actual PartyB to send in the STK push payload  resolved once here
 # so Phase 3's request-building code just reads settings.MPESA_PARTY_B.
 MPESA_PARTY_B = MPESA_TILL_NUMBER if MPESA_ACCOUNT_TYPE == 'TILL' and MPESA_TILL_NUMBER else MPESA_SHORTCODE
+
+# --- Outgoing email (Gmail SMTP) ---
+# Shareholder-facing emails (welcome, withdrawal approved, voucher approved,
+# share-increase approved) plus the admin's own "new withdrawal request"
+# notification all go out through this one backend. Point it at a Gmail
+# account: EMAIL_HOST_USER is the Gmail address, EMAIL_HOST_PASSWORD is a
+# 16-character Gmail "App Password" (Google Account -> Security -> App
+# passwords), not the normal login password  Gmail rejects SMTP AUTH with
+# the account password directly. If these are left blank, Django falls back
+# to printing emails to the console instead of failing the request that
+# triggered them (see apps.core.emails, every send_* there is wrapped so a
+# broken mail server never blocks an approval/withdrawal/voucher action).
+EMAIL_BACKEND = config(
+    'EMAIL_BACKEND',
+    default='django.core.mail.backends.smtp.EmailBackend' if config('EMAIL_HOST_USER', default='')
+    else 'django.core.mail.backends.console.EmailBackend',
+)
+EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=EMAIL_HOST_USER or 'no-reply@example.com')
+
+# Every new withdrawal request also emails this address so the Main Admin
+# hears about it immediately, even away from the portal. Overridable via
+# env; defaults to the address given for this project.
+ADMIN_NOTIFICATION_EMAIL = config('ADMIN_NOTIFICATION_EMAIL', default='nabiswaj8@gmail.com')
 
 # --- Internal worker auth (for the separate expiry/MikroTik-sync process) ---
 INTERNAL_TASK_TOKEN = config('INTERNAL_TASK_TOKEN', default='')

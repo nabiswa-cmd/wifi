@@ -1,0 +1,61 @@
+{% extends "core/admin_base.html" %}
+{% block title %}Withdrawal Requests &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}Withdrawal Requests{% endblock %}
+{% block admin_content %}
+
+<div class="card">
+  <h3 style="margin-top:0;">Pending Withdrawal Requests</h3>
+  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
+    Approving means the money has already been sent  the shareholder is emailed automatically
+    as soon as you approve.
+  </p>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Shareholder</th><th>Amount</th><th>Send to</th><th>Note</th><th>Requested</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for w in pending_withdrawals %}
+      <tr>
+        <td>{{ w.shareholder }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ w.amount }}</td>
+        <td>{{ w.payment_phone }}{% if w.payment_account_name %} &middot; {{ w.payment_account_name }}{% endif %}</td>
+        <td>{{ w.note|default:" " }}</td>
+        <td>{{ w.created_at|date:"d M Y H:i" }}</td>
+        <td style="white-space:nowrap;">
+          <form method="post" action="{% url 'core:decide_withdrawal' w.id %}" style="display:inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="approve">
+            <button class="btn" type="submit" style="padding:6px 10px; font-size:.8rem;">Approve &amp; mark paid</button>
+          </form>
+          <form method="post" action="{% url 'core:decide_withdrawal' w.id %}" style="display:inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="reject">
+            <button class="btn btn-secondary" type="submit" style="padding:6px 10px; font-size:.8rem;">Reject</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">No withdrawal requests awaiting a decision.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if recent_withdrawal_decisions %}
+<div class="card" style="margin-top:12px;">
+  <h4 style="margin:0 0 6px;">Recent decisions</h4>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Shareholder</th><th>Amount</th><th>Status</th><th>Decided by</th><th>When</th></tr></thead>
+    <tbody>
+      {% for w in recent_withdrawal_decisions %}
+      <tr>
+        <td>{{ w.shareholder }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ w.amount }}</td>
+        <td>{% if w.status == 'PAID' %}<span class="badge badge-success">Paid</span>{% else %}<span class="badge badge-danger">Rejected{% if w.rejection_reason %}: {{ w.rejection_reason }}{% endif %}</span>{% endif %}</td>
+        <td>{{ w.decided_by }}</td>
+        <td>{{ w.decided_at|date:"d M Y H:i" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

@@ -67,56 +67,12 @@
   
 </div>
 
-<div class="card" style="margin-top:12px;" id="withdrawal-requests">
+<div class="card" style="margin-top:12px;">
   <h3 style="margin-top:0;">Withdrawal Requests</h3>
   <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
-    Approving means the money has already been sent </p>
-  <table style="width:100%;">
-    <thead><tr><th style="text-align:left;">Shareholder</th><th>Amount</th><th>Send to</th><th>Note</th><th>Requested</th><th>Action</th></tr></thead>
-    <tbody>
-      {% for w in pending_withdrawals %}
-      <tr>
-        <td>{{ w.shareholder }}</td>
-        <td style="text-align:right;">{{ branding.currency }} {{ w.amount }}</td>
-        <td>{{ w.payment_phone }}{% if w.payment_account_name %} &middot; {{ w.payment_account_name }}{% endif %}</td>
-        <td>{{ w.note|default:" " }}</td>
-        <td>{{ w.created_at|date:"d M Y H:i" }}</td>
-        <td style="white-space:nowrap;">
-          <form method="post" action="{% url 'core:decide_withdrawal' w.id %}" style="display:inline;">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="approve">
-            <button class="btn" type="submit" style="padding:6px 10px; font-size:.8rem;">Approve &amp; mark paid</button>
-          </form>
-          <form method="post" action="{% url 'core:decide_withdrawal' w.id %}" style="display:inline;">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="reject">
-            <button class="btn btn-secondary" type="submit" style="padding:6px 10px; font-size:.8rem;">Reject</button>
-          </form>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="6">No withdrawal requests awaiting a decision.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  {% if recent_withdrawal_decisions %}
-  <h4 style="margin:16px 0 6px;">Recent decisions</h4>
-  <table style="width:100%;">
-    <thead><tr><th style="text-align:left;">Shareholder</th><th>Amount</th><th>Status</th><th>Decided by</th><th>When</th></tr></thead>
-    <tbody>
-      {% for w in recent_withdrawal_decisions %}
-      <tr>
-        <td>{{ w.shareholder }}</td>
-        <td style="text-align:right;">{{ branding.currency }} {{ w.amount }}</td>
-        <td>{% if w.status == 'PAID' %}<span class="badge badge-success">Paid</span>{% else %}<span class="badge badge-danger">Rejected{% if w.rejection_reason %}: {{ w.rejection_reason }}{% endif %}</span>{% endif %}</td>
-        <td>{{ w.decided_by }}</td>
-        <td>{{ w.decided_at|date:"d M Y H:i" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
+    Moved to its own page for the Main Admin.
+  </p>
+  <a class="btn" href="{% url 'core:withdrawal_requests_admin' %}">Go to Withdrawal Requests</a>
 </div>
 
 <div class="card" style="margin-top:12px;" id="share-increase-requests">
@@ -268,7 +224,11 @@
   <form method="post" action="{% url 'core:request_withdrawal' %}" id="withdraw-form" style="margin-top:14px; max-width:420px;" hidden>
     {% csrf_token %}
     <label style="font-size:.8rem; color:var(--color-text-muted);">Amount ({{ branding.currency }}, up to {{ available_to_withdraw }})</label>
-    <input type="number" step="0.01" min="0.01" max="{{ available_to_withdraw }}" name="amount" required>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <input type="number" step="0.01" min="0.01" max="{{ available_to_withdraw }}" name="amount" id="withdraw-amount" style="flex:1;" required>
+      <span id="withdraw-amount-icon" style="font-size:1.1rem; width:22px; text-align:center;"></span>
+    </div>
+    <p id="withdraw-amount-msg" style="font-size:.78rem; margin:4px 0 0;"></p>
     <label style="font-size:.8rem; color:var(--color-text-muted);">Phone number to pay to (M-Pesa)</label>
     <input type="tel" name="payment_phone" placeholder="07XXXXXXXX" value="{{ my_shareholder.payment_phone }}" required>
     <label style="font-size:.8rem; color:var(--color-text-muted);">Account name (optional)</label>
@@ -280,7 +240,7 @@
       Pre-filled from <a href="{% url 'core:my_account' %}">your account details</a>  change them here to
       use different details just for this request, or edit your account to update them for good.
     </p>
-    <button class="btn" type="submit">Submit Request</button>
+    <button class="btn" type="submit" id="withdraw-submit-btn">Submit Request</button>
   </form>
   <script>
     (function () {
@@ -288,6 +248,48 @@
       var form = document.getElementById('withdraw-form');
       if (btn && form) {
         btn.addEventListener('click', function () { form.hidden = !form.hidden; });
+      }
+
+      // Real-time verification: as the shareholder types an amount, check
+      // it against what's actually available to withdraw this month
+      // ({{ available_to_withdraw }}, rendered server-side once, no extra
+      // requests needed). A red cross + disabled Submit if it's more than
+      // available (or not a valid positive number); a green tick + enabled
+      // Submit otherwise.
+      var available = parseFloat('{{ available_to_withdraw|default:0 }}') || 0;
+      var amountInput = document.getElementById('withdraw-amount');
+      var icon = document.getElementById('withdraw-amount-icon');
+      var msg = document.getElementById('withdraw-amount-msg');
+      var submitBtn = document.getElementById('withdraw-submit-btn');
+
+      function validateAmount() {
+        var value = parseFloat(amountInput.value);
+        var valid = !isNaN(value) && value > 0 && value <= available;
+        if (!amountInput.value) {
+          icon.textContent = '';
+          msg.textContent = '';
+          submitBtn.disabled = false; // required attr still blocks empty submit
+          return;
+        }
+        if (valid) {
+          icon.textContent = '✓';
+          icon.style.color = 'var(--status-success, #3fb950)';
+          msg.style.color = 'var(--status-success, #3fb950)';
+          msg.textContent = 'Amount is available to withdraw.';
+          submitBtn.disabled = false;
+        } else {
+          icon.textContent = '✕';
+          icon.style.color = 'var(--status-danger, #f85149)';
+          msg.style.color = 'var(--status-danger, #f85149)';
+          msg.textContent = isNaN(value) || value <= 0
+            ? 'Enter a valid amount greater than zero.'
+            : 'That is more than you have available ({{ branding.currency }} ' + available.toFixed(2) + ').';
+          submitBtn.disabled = true;
+        }
+      }
+      if (amountInput) {
+        amountInput.addEventListener('input', validateAmount);
+        validateAmount();
       }
     })();
   </script>

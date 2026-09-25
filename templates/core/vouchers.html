@@ -39,35 +39,11 @@
 
 {% if is_main_admin %}
 <div class="card" style="margin-top:14px;">
-  <h3 style="margin-top:0;">Pending shareholder requests</h3>
-  <table>
-    <thead><tr><th>Batch</th><th>Package</th><th>Qty</th><th>Requested by</th><th>When</th><th>Action</th></tr></thead>
-    <tbody>
-      {% for batch in pending_batches %}
-      <tr>
-        <td data-label="Batch">{{ batch.name }}</td>
-        <td data-label="Package">{{ batch.package.name }}</td>
-        <td data-label="Qty">{{ batch.quantity }}</td>
-        <td data-label="Requested by">{{ batch.created_by }}</td>
-        <td data-label="When">{{ batch.created_at|date:"d M Y H:i" }}</td>
-        <td data-label="Action">
-          <form method="post" action="{% url 'core:approve_voucher_batch' batch.id %}" style="display:inline;">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="approve">
-            <button class="btn" type="submit" style="padding:4px 10px;font-size:.8rem;">Approve</button>
-          </form>
-          <form method="post" action="{% url 'core:approve_voucher_batch' batch.id %}" style="display:inline;">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="reject">
-            <button class="btn btn-secondary" type="submit" style="padding:4px 10px;font-size:.8rem;">Reject</button>
-          </form>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="6">No pending requests.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <h3 style="margin-top:0;">Voucher Approvals</h3>
+  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
+    Pending shareholder voucher requests now live on their own page.
+  </p>
+  <a class="btn" href="{% url 'core:voucher_approvals_admin' %}">Go to Voucher Approvals</a>
 </div>
 {% endif %}
 

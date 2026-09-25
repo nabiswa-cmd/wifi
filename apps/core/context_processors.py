@@ -23,3 +23,28 @@ def feedback_badge(request):
         return {}
     from .models import CustomerFeedback
     return {'feedback_new_count': CustomerFeedback.objects.filter(is_contacted=False).count()}
+
+
+def admin_action_badges(request):
+    """
+    Pending-count badges for the Main-Admin-only sidebar links: Withdrawal
+    Requests and Voucher Approvals now live on their own pages (moved out
+    of Revenue/Vouchers), so these badges are what tells the Main Admin
+    something needs a decision without having to click in first.
+    """
+    user = getattr(request, 'user', None)
+    if not user or not user.is_authenticated:
+        return {}
+    profile = getattr(user, 'staff_profile', None)
+    if profile is None or not profile.is_active_staff or profile.role.name != 'SUPER_ADMIN':
+        return {}
+    from apps.billing.models import WithdrawalRequest
+    from apps.vouchers.models import VoucherBatch
+    return {
+        'pending_withdrawals_count': WithdrawalRequest.objects.filter(
+            status=WithdrawalRequest.Status.PENDING
+        ).count(),
+        'pending_voucher_batches_count': VoucherBatch.objects.filter(
+            approval_status=VoucherBatch.ApprovalStatus.PENDING
+        ).count(),
+    }

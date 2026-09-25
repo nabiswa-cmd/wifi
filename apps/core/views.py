@@ -328,14 +328,8 @@ def revenue_dashboard(request):
         context['pending_voucher_requests'] = VoucherBatch.objects.filter(
             approval_status=VoucherBatch.ApprovalStatus.PENDING
         ).count()
-        # Withdrawal requests awaiting the Main Admin's decision  he is
-        # the one paying them, so approving here is what sends the money.
-        context['pending_withdrawals'] = WithdrawalRequest.objects.filter(
-            status=WithdrawalRequest.Status.PENDING
-        ).select_related('shareholder', 'shareholder__user').order_by('created_at')
-        context['recent_withdrawal_decisions'] = WithdrawalRequest.objects.exclude(
-            status=WithdrawalRequest.Status.PENDING
-        ).select_related('shareholder', 'decided_by').order_by('-decided_at')[:15]
+        # Withdrawal requests moved to their own Main-Admin-only sidebar
+        # page (core:withdrawal_requests_admin)  no longer shown here.
         # Share-increase requests awaiting a decision  approving one is
         # the only thing that ever moves a shareholder's share_quantity,
         # contribution or the company's total_capital (see
@@ -410,10 +404,12 @@ def request_withdrawal(request):
     elif not phone:
         messages.error(request, 'Enter the phone number the payout should be sent to.')
     else:
-        WithdrawalRequest.objects.create(
+        withdrawal = WithdrawalRequest.objects.create(
             shareholder=my_shareholder, amount=amount, period_start=month_start,
             payment_phone=phone, payment_account_name=account_name, note=note,
         )
+        from apps.core.emails import send_new_withdrawal_admin_notification
+        send_new_withdrawal_admin_notification(withdrawal)
         # Keep the shareholder's saved default payout details (the ones
         # that pre-fill this very form  see my_account/payment_phone) in
         # sync with whatever they just used, so an edit made here "for
@@ -450,14 +446,18 @@ def decide_withdrawal(request, request_id):
         WithdrawalRequest, pk=request_id, status=WithdrawalRequest.Status.PENDING
     )
     action = request.POST.get('action')
-    back = f"{reverse('core:revenue_dashboard')}#withdrawal-requests"
+    back = reverse('core:withdrawal_requests_admin')
+
+    from apps.core.emails import send_withdrawal_approved_email, send_withdrawal_rejected_email
 
     if action == 'approve':
         withdrawal.approve_and_pay(request.user)
+        send_withdrawal_approved_email(withdrawal)
         messages.success(request, f'Marked paid: {withdrawal.amount} to {withdrawal.shareholder}.')
     elif action == 'reject':
         reason = request.POST.get('reason', '').strip()
         withdrawal.reject(request.user, reason=reason)
+        send_withdrawal_rejected_email(withdrawal)
         messages.success(request, f'Rejected withdrawal request from {withdrawal.shareholder}.')
     else:
         messages.error(request, 'Unknown action.')
@@ -489,6 +489,7 @@ def my_account(request):
         payment_phone = (request.POST.get('payment_phone') or '').strip()
         payment_account_name = (request.POST.get('payment_account_name') or '').strip()
 
+        previous_email = request.user.email
         request.user.email = email
         request.user.save(update_fields=['email'])
 
@@ -499,6 +500,12 @@ def my_account(request):
             my_shareholder.save(update_fields=[
                 'full_name', 'payment_phone', 'payment_account_name', 'updated_at',
             ])
+
+        # New/changed email  send the welcome email confirming they're on
+        # file as part of the Company, same as first joining.
+        if email and email != previous_email:
+            from apps.core.emails import send_welcome_email
+            send_welcome_email(request.user, shareholder=my_shareholder)
 
         messages.success(request, 'Your details have been updated.')
         return redirect('core:my_account')
@@ -598,10 +605,13 @@ def decide_share_increase(request, request_id):
 
     if action == 'approve':
         increase_request.approve(request.user)
+        from apps.core.emails import send_share_increase_approved_email
+        send_share_increase_approved_email(increase_request)
         messages.success(
             request,
             f'Approved: +{increase_request.share_quantity} share(s) for {increase_request.shareholder}, '
-            f'total capital increased by {increase_request.contribution_amount}.',
+            f'total capital increased by {increase_request.contribution_amount}. '
+            'Every shareholder has been emailed.',
         )
     elif action == 'reject':
         reason = request.POST.get('reason', '').strip()
@@ -766,10 +776,8 @@ def voucher_management(request):
         'can_request': can_request,
         'is_main_admin': is_main_admin,
     }
-    if is_main_admin:
-        context['pending_batches'] = VoucherBatch.objects.filter(
-            approval_status=VoucherBatch.ApprovalStatus.PENDING
-        ).select_related('package', 'created_by').order_by('-created_at')
+    # Pending shareholder voucher requests moved to their own Main-Admin-only
+    # sidebar page (core:voucher_approvals_admin)  no longer shown here.
     context['recent_batches'] = VoucherBatch.objects.select_related(
         'package', 'created_by', 'approved_by'
     ).order_by('-created_at')[:20]
@@ -791,6 +799,8 @@ def approve_voucher_batch(request, batch_id):
 
     if action == 'approve':
         batch.approve(request.user)
+        from apps.core.emails import send_voucher_batch_approved_email
+        send_voucher_batch_approved_email(batch)
         messages.success(request, f'Approved: {batch.quantity} voucher(s) generated for {batch.name}.')
     elif action == 'reject':
         reason = request.POST.get('reason', '').strip()
@@ -799,7 +809,92 @@ def approve_voucher_batch(request, batch_id):
     else:
         messages.error(request, 'Unknown action.')
 
-    return redirect('core:vouchers')
+    return redirect('core:voucher_approvals_admin')
+
+
+@login_required(login_url='core:admin_login')
+def withdrawal_requests_admin(request):
+    """
+    Main-Admin/superuser-only page. Moved out of the Revenue dashboard so
+    that page stays about revenue figures, not decisions  this is now a
+    standalone sidebar item, only visible to Role.SUPER_ADMIN (see
+    admin_base.html), matching every other action page below.
+    """
+    from apps.billing.models import WithdrawalRequest
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden.', status=403)
+
+    context = {
+        'pending_withdrawals': WithdrawalRequest.objects.filter(
+            status=WithdrawalRequest.Status.PENDING
+        ).select_related('shareholder', 'shareholder__user').order_by('created_at'),
+        'recent_withdrawal_decisions': WithdrawalRequest.objects.exclude(
+            status=WithdrawalRequest.Status.PENDING
+        ).select_related('shareholder', 'decided_by').order_by('-decided_at')[:20],
+    }
+    return render(request, 'core/withdrawal_requests.html', context)
+
+
+@login_required(login_url='core:admin_login')
+def voucher_approvals_admin(request):
+    """
+    Main-Admin/superuser-only page. Moved out of Vouchers for the same
+    reason as withdrawal_requests_admin above  a standalone sidebar item.
+    """
+    from apps.vouchers.models import VoucherBatch
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden.', status=403)
+
+    context = {
+        'pending_batches': VoucherBatch.objects.filter(
+            approval_status=VoucherBatch.ApprovalStatus.PENDING
+        ).select_related('package', 'created_by').order_by('-created_at'),
+    }
+    return render(request, 'core/voucher_approvals.html', context)
+
+
+@login_required(login_url='core:admin_login')
+def compose_email(request):
+    """
+    Main-Admin-only "Send Email" page: a free-form, customizable email the
+    Main Admin can send to any chosen set of shareholders  for meeting
+    notices, announcements, anything that isn't one of the automatic
+    emails (welcome/withdrawal/voucher/share-increase) already sent
+    elsewhere in this module.
+    """
+    from apps.billing.models import Shareholder
+    from apps.core.emails import send_custom_email
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden.', status=403)
+
+    shareholders = Shareholder.objects.filter(is_active=True).select_related('user').order_by('full_name')
+
+    if request.method == 'POST':
+        subject = (request.POST.get('subject') or '').strip()
+        message = (request.POST.get('message') or '').strip()
+        send_to_all = request.POST.get('send_to_all') == 'on'
+        selected_ids = request.POST.getlist('shareholder_ids')
+
+        if send_to_all:
+            recipients = [sh.user.email for sh in shareholders]
+        else:
+            recipients = [
+                sh.user.email for sh in shareholders if str(sh.id) in selected_ids
+            ]
+
+        if not subject or not message:
+            messages.error(request, 'Enter both a subject and a message.')
+        elif not recipients:
+            messages.error(request, 'Choose at least one shareholder to email (or tick "send to all").')
+        else:
+            send_custom_email(subject, message, recipients, sender_name='the Main Admin')
+            messages.success(request, f'Email sent to {len(recipients)} shareholder(s).')
+            return redirect('core:compose_email')
+
+    return render(request, 'core/compose_email.html', {'shareholders': shareholders})
 
 
 @login_required(login_url='core:admin_login')

@@ -1,0 +1,57 @@
+{% extends "core/admin_base.html" %}
+{% block title %}Send Email &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}Send Email{% endblock %}
+{% block admin_content %}
+
+<div class="card" style="max-width:640px;">
+  <h3 style="margin-top:0;">Send a custom email to shareholders</h3>
+  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
+    Use this for anything that isn't automatic  meeting notices, announcements, reminders.
+    Automatic emails (welcome, withdrawal approved, voucher approved, share increase approved)
+    are still sent on their own, you don't need this page for those.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+
+    <label style="font-size:.8rem; color:var(--color-text-muted);">Subject</label>
+    <input type="text" name="subject" placeholder="e.g. Shareholder meeting  Saturday 10am" required>
+
+    <label style="font-size:.8rem; color:var(--color-text-muted); margin-top:8px; display:block;">Message</label>
+    <textarea name="message" rows="8" placeholder="Write your message here…" required style="width:100%; font-family:inherit; padding:8px; border-radius:6px; border:1px solid var(--color-border); background:var(--color-surface); color:var(--color-text);"></textarea>
+
+    <label style="display:flex; align-items:center; gap:8px; margin-top:12px; font-size:.85rem;">
+      <input type="checkbox" name="send_to_all" id="send_to_all">
+      Send to all active shareholders
+    </label>
+
+    <div id="shareholder-picker" style="margin-top:8px; max-height:220px; overflow-y:auto; border:1px solid var(--color-border); border-radius:6px; padding:8px;">
+      {% for sh in shareholders %}
+      <label style="display:flex; align-items:center; gap:8px; padding:4px 0; font-size:.85rem;">
+        <input type="checkbox" name="shareholder_ids" value="{{ sh.id }}" class="shareholder-checkbox">
+        {{ sh }} {% if not sh.user.email %}<span style="color:var(--status-danger); font-size:.75rem;">(no email on file)</span>{% endif %}
+      </label>
+      {% empty %}
+      <p style="margin:0; color:var(--color-text-muted); font-size:.85rem;">No shareholders on file yet.</p>
+      {% endfor %}
+    </div>
+
+    <button class="btn" type="submit" style="margin-top:12px;">Send Email</button>
+  </form>
+</div>
+
+<script>
+  (function () {
+    var sendAll = document.getElementById('send_to_all');
+    var picker = document.getElementById('shareholder-picker');
+    var boxes = document.querySelectorAll('.shareholder-checkbox');
+    function syncPicker() {
+      var disabled = sendAll.checked;
+      picker.style.opacity = disabled ? '.5' : '1';
+      boxes.forEach(function (b) { b.disabled = disabled; });
+    }
+    sendAll.addEventListener('change', syncPicker);
+    syncPicker();
+  })();
+</script>
+{% endblock %}

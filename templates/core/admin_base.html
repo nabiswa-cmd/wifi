@@ -20,6 +20,20 @@
       <a href="{% url 'core:time_adjustments_log' %}" class="{% if request.resolver_match.url_name == 'time_adjustments_log' %}active{% endif %}">Time Adjustments Log</a>
       <a href="{% url 'core:vouchers' %}" class="{% if request.resolver_match.url_name == 'vouchers' %}active{% endif %}">Vouchers</a>
 
+      {% if request.user.staff_profile.role.name == 'SUPER_ADMIN' %}
+      <hr style="border-color:rgba(255,255,255,.12); margin:8px 16px;">
+      <div style="padding:6px 16px; font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; color:#8a8a8a;">Main Admin</div>
+      <a href="{% url 'core:withdrawal_requests_admin' %}" class="{% if request.resolver_match.url_name == 'withdrawal_requests_admin' %}active{% endif %}">
+        Withdrawal Requests
+        {% if pending_withdrawals_count %}<span class="sidebar-badge">{{ pending_withdrawals_count }}</span>{% endif %}
+      </a>
+      <a href="{% url 'core:voucher_approvals_admin' %}" class="{% if request.resolver_match.url_name == 'voucher_approvals_admin' %}active{% endif %}">
+        Voucher Approvals
+        {% if pending_voucher_batches_count %}<span class="sidebar-badge">{{ pending_voucher_batches_count }}</span>{% endif %}
+      </a>
+      <a href="{% url 'core:compose_email' %}" class="{% if request.resolver_match.url_name == 'compose_email' %}active{% endif %}">Send Email</a>
+      {% endif %}
+
       <hr style="border-color:rgba(255,255,255,.12); margin:8px 16px;">
       <a href="{% url 'core:my_account' %}" class="{% if request.resolver_match.url_name == 'my_account' %}active{% endif %}">My Account</a>
       {% if request.user.staff_profile.role.name == 'SUPER_ADMIN' %}
