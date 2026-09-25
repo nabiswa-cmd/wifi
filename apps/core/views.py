@@ -65,7 +65,7 @@ def dashboard(request):
     from apps.billing.models import Payment, Subscription
     from apps.mikrotik.models import InternetSession
 
-    today = timezone.now().date()
+    today = timezone.localdate()
 
     local_hour = timezone.localtime(timezone.now()).hour
     if local_hour < 12:
@@ -215,7 +215,7 @@ def revenue_dashboard(request):
 
     is_main_admin = _is_main_admin(request.user)
     now = timezone.now()
-    today = now.date()
+    today = timezone.localdate()
     month_start = today.replace(day=1)
     prev_month_end = month_start - timedelta(days=1)
     prev_month_start = prev_month_end.replace(day=1)
@@ -378,7 +378,7 @@ def request_withdrawal(request):
         messages.error(request, 'No shareholder record is linked to your account.')
         return redirect(back)
 
-    today = timezone.now().date()
+    today = timezone.localdate()
     month_start = today.replace(day=1)
     revenue_qs = Payment.objects.filter(status=Payment.Status.SUCCESS)
     company_revenue = revenue_qs.filter(
