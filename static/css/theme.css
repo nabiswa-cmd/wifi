@@ -118,7 +118,7 @@ body {
 }
 .badge-success { color: var(--status-success); }
 .badge-warning { color: var(--status-warning); }
-.badge-danger  { color: var(--status-danger); }\
+.badge-danger  { color: var(--status-danger); }
 .badge-info    { color: var(--status-info); }
 
 .btn {
