@@ -5,22 +5,26 @@
 */
 :root,
 [data-theme="light"] {
-  --color-primary: #7fae2e;      /* darkened for AA contrast on white; source hue #CFF27E */
-  --color-primary-soft: #CFF27E;
-  --color-secondary: #c9a52e;    /* darkened from #F2DD6E for text-safe use */
-  --color-secondary-soft: #F2DD6E;
-  --color-accent: #E5B25D;
-  --color-bg: #FAFAF7;
+  /* Light palette  sampled from the beach/lagoon photo (static/images/s.webp):
+     turquoise shallows, deep teal water, palm green, sand, sky blue. */
+  --color-primary: #12897E;      /* deep teal, from the lagoon water */
+  --color-primary-soft: #9FE8DD; /* pale turquoise shallows */
+  --color-secondary: #cc9a3c;    /* warm sand, darkened for AA contrast on white */
+  --color-secondary-soft: #F0E0B4; /* beach sand */
+  --color-accent: #2BA9D9;       /* sky/open-water blue */
+  --color-bg: #F6F5EC;           /* warm sand-white, not stark white */
   --color-surface: #FFFFFF;
-  --color-surface-alt: #F1F3E9;
-  --color-text: #221E22;
-  --color-text-muted: #5b5760;
-  --color-border: #E4E4DC;
+  --color-surface-alt: #EAF6F2;  /* faint aqua tint */
+  --color-text: #17302B;         /* deep teal-black, from the shaded palms */
+  --color-text-muted: #5c6f6a;
+  --color-border: #DCEAE5;
 
-  --status-success: #2f9e44;
+  --status-success: #1f9e6b;
   --status-warning: #d9a400;
   --status-danger: #d64545;
-  --status-info: #3b7dd8;
+  --status-info: #2BA9D9;
+
+  --bg-image: url("/static/images/s.webp");
 }
 
 [data-theme="dark"] {
@@ -43,6 +47,8 @@
 
   --color-accent-alt-1: #1B2050;
   --color-accent-alt-2: #333B72;
+
+  --bg-image: url("/static/images/LOGIC.jpg");
 }
 
 * { box-sizing: border-box; }
@@ -60,7 +66,7 @@ body {
   background:
     linear-gradient(color-mix(in srgb, var(--color-bg) 40%, transparent),
                      color-mix(in srgb, var(--color-bg) 40%, transparent)),
-    url("/static/images/LOGIC.jpg") center center / cover fixed no-repeat;
+    var(--bg-image) center center / cover fixed no-repeat;
   color: var(--color-text);
   transition: background-color .2s ease, color .2s ease;
 }
