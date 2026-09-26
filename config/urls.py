@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.views.static import serve as serve_media
 
 urlpatterns = [
     path('django-admin/', admin.site.urls),          # Django's built-in admin (superusers, low-level)
@@ -7,5 +9,6 @@ urlpatterns = [
     path('api/', include('api.urls')),                # DRF API surface (Section 30)
     path('billing/', include('apps.billing.urls')),    # Purchase flow (Section 9/10/11)
     path('vouchers/', include('apps.vouchers.urls')),   # Voucher redemption (Section 19)
+    path('media/<path:path>', serve_media, {'document_root': settings.MEDIA_ROOT}),
     path('', include('apps.customers.urls')),          # Customer-facing captive portal (Section 9)
 ]
