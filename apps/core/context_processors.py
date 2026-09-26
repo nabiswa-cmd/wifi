@@ -29,7 +29,7 @@ def admin_action_badges(request):
     """
     Pending-count badges for the Main-Admin-only sidebar links: Withdrawal
     Requests and Voucher Approvals now live on their own pages (moved out
-    of Revenue/Vouchers), so these badges are what tells the Main Admin
+    of Revenue/Vouchers), so these badges are what tells the Company
     something needs a decision without having to click in first.
     """
     user = getattr(request, 'user', None)

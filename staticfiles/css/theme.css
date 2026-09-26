@@ -60,7 +60,7 @@ body {
   background:
     linear-gradient(color-mix(in srgb, var(--color-bg) 82%, transparent),
                      color-mix(in srgb, var(--color-bg) 82%, transparent)),
-    url("/static/images/LOGIC.png") center center / cover fixed no-repeat;
+    url("/static/images/LOGIC.jpg") center center / cover fixed no-repeat;
   color: var(--color-text);
   transition: background-color .2s ease, color .2s ease;
 }

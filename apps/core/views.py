@@ -49,7 +49,7 @@ def _is_main_admin(user):
 
 
 def _can_view_revenue_dashboard(user):
-    """Main Admin and Shareholder roles only  see revenue_dashboard's docstring."""
+    """Company and Shareholder roles only  see revenue_dashboard's docstring."""
     return user.is_authenticated and _staff_role_name(user) in ('SUPER_ADMIN', 'SHAREHOLDER')
 
 
@@ -142,7 +142,7 @@ def shareholder_login(request):
     a stray GET here (e.g. someone bookmarked the old URL) is bounced back
     to that same section of the landing page rather than shown on its own.
 
-    Both shareholders AND the Main Admin sign in here to reach
+    Both shareholders AND the Company sign in here to reach
     revenue_dashboard directly; anyone else's credentials are rejected
     even if correct, since this form's only job is the revenue portal.
     """
@@ -193,9 +193,9 @@ def revenue_dashboard(request):
     """
     Revenue Visibility for All Shareholders.
 
-    Open to Role.SUPER_ADMIN (Main Admin) and Role.SHAREHOLDER only 
+    Open to Role.SUPER_ADMIN (Company) and Role.SHAREHOLDER only 
     everyone else gets a 403, matching "Shareholders can see the
-    company's overall revenue... The Main Admin can see everything".
+    company's overall revenue... The Company can see everything".
 
     Every figure here is built from Payment rows with status=SUCCESS
     only  failed/pending/cancelled/timeout/refunded payments never
@@ -211,7 +211,7 @@ def revenue_dashboard(request):
     from apps.core.models import SystemSettings
 
     if not _can_view_revenue_dashboard(request.user):
-        return HttpResponse('Forbidden: revenue dashboard is restricted to shareholders and the Main Admin.', status=403)
+        return HttpResponse('Forbidden: revenue dashboard is restricted to shareholders and the Company.', status=403)
 
     is_main_admin = _is_main_admin(request.user)
     now = timezone.now()
@@ -303,7 +303,7 @@ def revenue_dashboard(request):
     from apps.billing.models import WithdrawalRequest
 
     # My own earnings + withdrawal standing  applies to any logged-in
-    # user with a linked Shareholder row, Main Admin included (he "can
+    # user with a linked Shareholder row, Company included (he "can
     # also be a shareholder"), not just the SHAREHOLDER-role branch below.
     context['my_shareholder'] = my_shareholder
     context['my_earnings'] = my_shareholder.earnings_for(distributable_profit) if my_shareholder else None
@@ -363,7 +363,7 @@ def revenue_dashboard(request):
 @require_POST
 def request_withdrawal(request):
     """
-    A shareholder (or the Main Admin, if he's also a shareholder) asks to
+    A shareholder (or the Company, if he's also a shareholder) asks to
     withdraw some of their available earnings, dropping in the payment
     details for THIS payout each time. Capped at what's actually left
     unclaimed for the current calendar month so the same earnings can't be
@@ -424,7 +424,7 @@ def request_withdrawal(request):
         if update_fields:
             my_shareholder.save(update_fields=update_fields + ['updated_at'])
 
-        messages.success(request, f'Withdrawal request for {amount} submitted  awaiting Main Admin approval.')
+        messages.success(request, f'Withdrawal request for {amount} submitted  awaiting Company approval.')
 
     return redirect(back)
 
@@ -538,7 +538,7 @@ def my_account(request):
 def request_share_increase(request):
     """
     A shareholder asks to grow their stake by contributing more capital.
-    This only ever queues a ShareIncreaseRequest for the Main Admin to
+    This only ever queues a ShareIncreaseRequest for the Company to
     approve or reject  nothing about the shareholder's own row (or the
     company's total_capital) changes until that decision is made (see
     ShareIncreaseRequest.approve / decide_share_increase).
@@ -577,7 +577,7 @@ def request_share_increase(request):
         messages.success(
             request,
             f'Request to add {share_quantity} share(s) for {contribution_amount} submitted  '
-            'awaiting Main Admin approval.',
+            'awaiting Company approval.',
         )
 
     return redirect(back)
@@ -728,8 +728,8 @@ def voucher_management(request):
     In-portal voucher management (no more django-admin redirect).
 
     Creation is restricted to Role.SHAREHOLDER, who can only ever
-    REQUEST a batch  codes are not generated until the Main Admin
-    approves it (see approve_voucher_batch). The Main Admin can also
+    REQUEST a batch  codes are not generated until the Company
+    approves it (see approve_voucher_batch). The Company can also
     issue a batch directly here, which is auto-approved since they are
     the approver.
     """
@@ -745,7 +745,7 @@ def voucher_management(request):
 
     if request.method == 'POST':
         if not can_request:
-            error = 'Only shareholders (subject to Main Admin approval) or the Main Admin can request vouchers.'
+            error = 'Only shareholders (subject to Company approval) or the Company can request vouchers.'
         else:
             package = InternetPackage.objects.filter(id=request.POST.get('package_id')).first()
             try:
@@ -767,7 +767,7 @@ def voucher_management(request):
                     batch.approve(request.user)
                     new_code = ', '.join(v.code for v in batch.vouchers.all())
                 else:
-                    messages.success(request, f'Voucher request for {quantity} x {package.name} submitted  awaiting Main Admin approval.')
+                    messages.success(request, f'Voucher request for {quantity} x {package.name} submitted  awaiting Company approval.')
 
     context = {
         'packages': InternetPackage.objects.filter(is_active=True).order_by('display_order'),
@@ -859,7 +859,7 @@ def voucher_approvals_admin(request):
 def compose_email(request):
     """
     Main-Admin-only "Send Email" page: a free-form, customizable email the
-    Main Admin can send to any chosen set of shareholders  for meeting
+    Company can send to any chosen set of shareholders  for meeting
     notices, announcements, anything that isn't one of the automatic
     emails (welcome/withdrawal/voucher/share-increase) already sent
     elsewhere in this module.
@@ -890,7 +890,7 @@ def compose_email(request):
         elif not recipients:
             messages.error(request, 'Choose at least one shareholder to email (or tick "send to all").')
         else:
-            send_custom_email(subject, message, recipients, sender_name='the Main Admin')
+            send_custom_email(subject, message, recipients, sender_name='the Company')
             messages.success(request, f'Email sent to {len(recipients)} shareholder(s).')
             return redirect('core:compose_email')
 
@@ -922,7 +922,7 @@ def shareholder_activity(request):
 @login_required(login_url='core:admin_login')
 def time_adjustments_log(request):
     """
-    Visible to every logged-in staff account (Main Admin, shareholders,
+    Visible to every logged-in staff account (Company, shareholders,
     and operational staff alike): every time someone added time to a
     customer's subscription, who did it, and why (add_subscription_time
     already writes each of these to AuditLog  this just displays them).
@@ -1071,7 +1071,7 @@ def feedback_list(request):
     from apps.core.models import CustomerFeedback
 
     if not _can_view_revenue_dashboard(request.user):
-        return HttpResponse('Forbidden: customer feedback is restricted to shareholders and the Main Admin.', status=403)
+        return HttpResponse('Forbidden: customer feedback is restricted to shareholders and the Company.', status=403)
 
     feedback = CustomerFeedback.objects.all()[:300]
     return render(request, 'core/feedback.html', {

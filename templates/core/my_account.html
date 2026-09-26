@@ -7,8 +7,7 @@
   <h3 style="margin-top:0;">Your Details</h3>
   <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
     Update your name, email, and the default payout details used to pre-fill every new
-    withdrawal request. Your share quantity, contribution, and percentage aren't editable here 
-    see "Increase Your Shares" on the <a href="{% url 'core:revenue_dashboard' %}">Revenue</a> page.
+    withdrawal request. 
   </p>
   <form method="post" action="{% url 'core:my_account' %}">
     {% csrf_token %}
@@ -30,7 +29,7 @@
   </form>
   {% if not my_shareholder %}
   <p style="color:var(--color-text-muted); font-size:.8rem; margin-top:10px;">
-    No shareholder record is linked to your account yet  ask the Main Admin to set this up.
+    No shareholder record is linked to your account yet  ask the Company to set this up.
     You can still change your password below.
   </p>
   {% endif %}
@@ -53,10 +52,7 @@
 
     <button class="btn" type="submit" style="margin-top:10px;">Change Password</button>
   </form>
-  <p style="color:var(--color-text-muted); font-size:.78rem; margin-top:8px;">
-    You'll stay signed in after changing it. You'll still be logged out automatically after
-    1 hour of inactivity, same as always.
-  </p>
+
 </div>
 
 {% if my_shareholder %}
@@ -67,10 +63,7 @@
     <tr><td>Contribution</td><td style="text-align:right;">{{ branding.currency }} {{ my_shareholder.contribution }}</td></tr>
     <tr><td>Share percentage</td><td style="text-align:right;">{{ my_shareholder.percentage }}%</td></tr>
   </table>
-  <p style="color:var(--color-text-muted); font-size:.78rem; margin-top:8px;">
-    Not editable here  the only way these change is an approved share-increase request.
-    <a href="{% url 'core:revenue_dashboard' %}#increase-shares">Request an increase &rarr;</a>
-  </p>
+  
 
   {% if my_share_increase_requests %}
   <h4 style="margin:16px 0 6px;">Your share-increase requests</h4>

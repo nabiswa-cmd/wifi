@@ -67,20 +67,8 @@
   
 </div>
 
-<div class="card" style="margin-top:12px;">
-  <h3 style="margin-top:0;">Withdrawal Requests</h3>
-  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
-    Moved to its own page for the Main Admin.
-  </p>
-  <a class="btn" href="{% url 'core:withdrawal_requests_admin' %}">Go to Withdrawal Requests</a>
-</div>
-
 <div class="card" style="margin-top:12px;" id="share-increase-requests">
   <h3 style="margin-top:0;">Share Increase Requests</h3>
-  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
-    Approving grows Total Capital Invested by the contribution amount, and every shareholder's
-    percentage recalculates against the new total.
-  </p>
   <table style="width:100%;">
     <thead><tr><th style="text-align:left;">Shareholder</th><th>+Shares</th><th>Contribution</th><th>Note</th><th>Requested</th><th>Action</th></tr></thead>
     <tbody>
@@ -105,7 +93,7 @@
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="6">No share-increase requests awaiting a decision.</td></tr>
+  
       {% endfor %}
     </tbody>
   </table>
@@ -133,7 +121,7 @@
 <div class="card" style="margin-top:12px;">
   <h3>Total Capital Invested</h3>
   <p class="price">{{ branding.currency }} {{ total_capital }}</p>
-  <p style="color:var(--color-text-muted); font-size:.8rem;">Set by the Main Admin  not editable here.</p>
+  <p style="color:var(--color-text-muted); font-size:.8rem;">Set by the Company  not editable here.</p>
 </div>
 
 <div class="card" style="margin-top:12px;">
@@ -155,11 +143,7 @@
 {% if my_shareholder %}
 <div class="card" style="margin-top:12px;" id="increase-shares">
   <h3 style="margin-top:0;">Increase Your Shares</h3>
-  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
-    Contribute more capital to grow your share quantity and percentage. Every request needs the
-    Main Admin's approval before it takes effect  your share quantity, contribution and total
-    capital invested stay as they are until then.
-  </p>
+  
   <button class="btn" id="toggle-increase-form" type="button">Request Share Increase</button>
   <form method="post" action="{% url 'core:request_share_increase' %}" id="increase-form" style="margin-top:14px; max-width:420px;" hidden>
     {% csrf_token %}
@@ -168,7 +152,7 @@
     <label style="font-size:.8rem; color:var(--color-text-muted);">Contribution amount ({{ branding.currency }})</label>
     <input type="number" step="0.01" min="0.01" name="contribution_amount" required>
     <label style="font-size:.8rem; color:var(--color-text-muted);">Note (optional)</label>
-    <input type="text" name="note" placeholder="Anything the Main Admin should know">
+    <input type="text" name="note" placeholder="Anything the Company should know">
     <button class="btn" type="submit" style="margin-top:8px;">Submit Request</button>
   </form>
   <script>
@@ -214,10 +198,7 @@
     <tr style="font-weight:700;"><td>Your earnings ({{ current_month_label }})</td><td style="text-align:right;">{{ branding.currency }} {{ my_earnings }}</td></tr>
     <tr style="font-weight:700; color:var(--color-primary);"><td>Available to withdraw</td><td style="text-align:right;">{{ branding.currency }} {{ available_to_withdraw }}</td></tr>
   </table>
-  <p style="color:var(--color-text-muted); font-size:.78rem; margin-top:6px;">
-    Share quantity and contribution aren't editable directly  use "Increase Your Shares" above to
-    grow them, which needs Main Admin approval.
-  </p>
+
 
   {% if available_to_withdraw > 0 %}
   <button class="btn" id="toggle-withdraw-form" type="button" style="margin-top:8px;">Request Withdrawal</button>
@@ -237,8 +218,7 @@
     <input type="text" name="note" placeholder="Anything the Company should know">
     <p style="font-size:.78rem; color:var(--color-text-muted); margin-top:-4px;">
       Payouts are sent manually for now, these are just the details the Company needs to send it to you.
-      Pre-filled from <a href="{% url 'core:my_account' %}">your account details</a>  change them here to
-      use different details just for this request, or edit your account to update them for good.
+      Pre-fill
     </p>
     <button class="btn" type="submit" id="withdraw-submit-btn">Submit Request</button>
   </form>
@@ -317,7 +297,7 @@
   </table>
   {% endif %}
   {% else %}
-  <p>No shareholder record is linked to your account yet, ask the Main Admin to set this up.</p>
+  <p>No shareholder record is linked to your account yet, ask the Company to set this up.</p>
   {% endif %}
 </div>
 

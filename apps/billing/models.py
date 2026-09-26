@@ -241,7 +241,7 @@ class Shareholder(models.Model):
     the ownership figures that dashboard must keep private between
     shareholders (share_quantity, contribution, percentage, earnings).
 
-    Only the Main Admin (Role.SUPER_ADMIN) can ever see every row; a
+    Only the Company (Role.SUPER_ADMIN) can ever see every row; a
     shareholder's own view of this data is restricted, in the view
     layer, to their own single row plus company-wide totals.
     """
@@ -253,7 +253,7 @@ class Shareholder(models.Model):
     contribution = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     # Auto-derived in save() from contribution / SystemSettings.total_capital
     # x 100  never hand-edited, so it can never drift out of sync with the
-    # total capital figure the Main Admin maintains (see revenue_dashboard).
+    # total capital figure the Company maintains (see revenue_dashboard).
     percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'), editable=False)
     is_active = models.BooleanField(default=True)
 
@@ -327,7 +327,7 @@ class Shareholder(models.Model):
 class WithdrawalRequest(models.Model):
     """
     A shareholder's request to withdraw their earnings for a given
-    calendar month. Payouts are manual for now  the Main Admin sends the
+    calendar month. Payouts are manual for now  the Company sends the
     money himself (he is the one paying them), so approving a request
     goes straight to PAID; there is no separate "approved but not yet
     paid" state to track while that's true.
@@ -374,7 +374,7 @@ class WithdrawalRequest(models.Model):
     def approve_and_pay(self, by_user):
         """
         Main-Admin-only (enforced in the view). Manual payouts mean the
-        Main Admin only clicks this once the money is already sent, so
+        Company only clicks this once the money is already sent, so
         this marks PAID directly rather than going through a separate
         "approved" holding state.
         """
@@ -398,7 +398,7 @@ class ShareIncreaseRequest(models.Model):
     .contribution ever change after the row is first created  both stay
     read-only everywhere a shareholder can reach (their own account page,
     the withdrawal form, the dashboard) precisely because every change to
-    them has to pass through here and be decided by the Main Admin first.
+    them has to pass through here and be decided by the Company first.
 
     Approving a request grows SystemSettings.total_capital by exactly the
     contribution funding it, so the capital figure and every shareholder's
@@ -444,7 +444,7 @@ class ShareIncreaseRequest(models.Model):
         Shareholder.save()'s percentage calculation already divides against
         the new, larger capital figure  then every other shareholder is
         re-saved too so their percentages shrink to match, exactly like
-        update_total_capital does when the Main Admin edits the figure by hand.
+        update_total_capital does when the Company edits the figure by hand.
         """
         from apps.core.models import SystemSettings
 

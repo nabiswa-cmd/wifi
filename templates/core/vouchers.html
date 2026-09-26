@@ -7,7 +7,7 @@
   <h3 style="margin-top:0;">{% if is_main_admin %}Issue a voucher batch{% else %}Request a voucher batch{% endif %}</h3>
   {% if not is_main_admin %}
   <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
-    Your request needs Main Admin approval before any codes are generated.
+    Your request needs Company approval before any codes are generated.
   </p>
   {% endif %}
   {% if new_code %}
@@ -33,19 +33,10 @@
 </div>
 {% else %}
 <div class="card" style="max-width:480px;">
-  <p>Voucher batches can only be requested by shareholders and issued by the Main Admin. You can still see redeemed/pending vouchers below.</p>
+  <p>Voucher batches can only be requested by shareholders and issued by the Company. You can still see redeemed/pending vouchers below.</p>
 </div>
 {% endif %}
 
-{% if is_main_admin %}
-<div class="card" style="margin-top:14px;">
-  <h3 style="margin-top:0;">Voucher Approvals</h3>
-  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
-    Pending shareholder voucher requests now live on their own page.
-  </p>
-  <a class="btn" href="{% url 'core:voucher_approvals_admin' %}">Go to Voucher Approvals</a>
-</div>
-{% endif %}
 
 <div class="card" style="margin-top:14px;">
   <h3 style="margin-top:0;">Recent voucher batches</h3>

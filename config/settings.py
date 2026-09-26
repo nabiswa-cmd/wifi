@@ -190,7 +190,7 @@ EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=EMAIL_HOST_USER or 'no-reply@example.com')
 
-# Every new withdrawal request also emails this address so the Main Admin
+# Every new withdrawal request also emails this address so the Company
 # hears about it immediately, even away from the portal. Overridable via
 # env; defaults to the address given for this project.
 ADMIN_NOTIFICATION_EMAIL = config('ADMIN_NOTIFICATION_EMAIL', default='nabiswaj8@gmail.com')

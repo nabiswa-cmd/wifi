@@ -88,7 +88,7 @@ index 0902a48..0cfad32 100644
 +    """
 +    Pending-count badges for the Main-Admin-only sidebar links: Withdrawal
 +    Requests and Voucher Approvals now live on their own pages (moved out
-+    of Revenue/Vouchers), so these badges are what tells the Main Admin
++    of Revenue/Vouchers), so these badges are what tells the Company
 +    something needs a decision without having to click in first.
 +    """
 +    user = getattr(request, 'user', None)
@@ -127,7 +127,7 @@ index 0000000..6645811
 +Branding (business name, support contact) is always read fresh from
 +SystemSettings rather than hard-coded, same rule as everywhere else in this
 +app (see core.models.SystemSettings docstring)  so these emails say
-+whatever the Main Admin has set as the business name (e.g. "Logic Company")
++whatever the Company has set as the business name (e.g. "Logic Company")
 +without needing a code change if that ever changes.
 +"""
 +import logging
@@ -192,7 +192,7 @@ index 0000000..6645811
 +
 +def send_withdrawal_approved_email(withdrawal):
 +    """
-+    Sent to the shareholder once the Main Admin marks their withdrawal
++    Sent to the shareholder once the Company marks their withdrawal
 +    request PAID (see billing.models.WithdrawalRequest.approve_and_pay).
 +    """
 +    business = _business_name()
@@ -212,7 +212,7 @@ index 0000000..6645811
 +
 +
 +def send_withdrawal_rejected_email(withdrawal):
-+    """Sent to the shareholder if the Main Admin rejects their withdrawal request."""
++    """Sent to the shareholder if the Company rejects their withdrawal request."""
 +    business = _business_name()
 +    currency = _currency()
 +    shareholder = withdrawal.shareholder
@@ -230,7 +230,7 @@ index 0000000..6645811
 +def send_new_withdrawal_admin_notification(withdrawal):
 +    """
 +    Fired on every new withdrawal request (approved or not), straight to
-+    settings.ADMIN_NOTIFICATION_EMAIL, so the Main Admin hears about a
++    settings.ADMIN_NOTIFICATION_EMAIL, so the Company hears about a
 +    pending request even if he isn't watching the portal.
 +    """
 +    business = _business_name()
@@ -249,7 +249,7 @@ index 0000000..6645811
 +
 +
 +def send_voucher_batch_approved_email(batch):
-+    """Sent to whoever requested a voucher batch once the Main Admin approves it."""
++    """Sent to whoever requested a voucher batch once the Company approves it."""
 +    business = _business_name()
 +    requester = batch.created_by
 +    if not requester or not requester.email:
@@ -323,7 +323,7 @@ index 23bbafc..07a2beb 100644
          context['pending_voucher_requests'] = VoucherBatch.objects.filter(
              approval_status=VoucherBatch.ApprovalStatus.PENDING
          ).count()
--        # Withdrawal requests awaiting the Main Admin's decision  he is
+-        # Withdrawal requests awaiting the Company's decision  he is
 -        # the one paying them, so approving here is what sends the money.
 -        context['pending_withdrawals'] = WithdrawalRequest.objects.filter(
 -            status=WithdrawalRequest.Status.PENDING
@@ -483,7 +483,7 @@ index 23bbafc..07a2beb 100644
 +def compose_email(request):
 +    """
 +    Main-Admin-only "Send Email" page: a free-form, customizable email the
-+    Main Admin can send to any chosen set of shareholders  for meeting
++    Company can send to any chosen set of shareholders  for meeting
 +    notices, announcements, anything that isn't one of the automatic
 +    emails (welcome/withdrawal/voucher/share-increase) already sent
 +    elsewhere in this module.
@@ -514,7 +514,7 @@ index 23bbafc..07a2beb 100644
 +        elif not recipients:
 +            messages.error(request, 'Choose at least one shareholder to email (or tick "send to all").')
 +        else:
-+            send_custom_email(subject, message, recipients, sender_name='the Main Admin')
++            send_custom_email(subject, message, recipients, sender_name='the Company')
 +            messages.success(request, f'Email sent to {len(recipients)} shareholder(s).')
 +            return redirect('core:compose_email')
 +
@@ -561,7 +561,7 @@ index 2fb4396..2ec11e1 100644
 +EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 +DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=EMAIL_HOST_USER or 'no-reply@example.com')
 +
-+# Every new withdrawal request also emails this address so the Main Admin
++# Every new withdrawal request also emails this address so the Company
 +# hears about it immediately, even away from the portal. Overridable via
 +# env; defaults to the address given for this project.
 +ADMIN_NOTIFICATION_EMAIL = config('ADMIN_NOTIFICATION_EMAIL', default='nabiswaj8@gmail.com')
@@ -579,7 +579,7 @@ index 0f53529..5aaceb9 100644
  
 +      {% if request.user.staff_profile.role.name == 'SUPER_ADMIN' %}
 +      <hr style="border-color:rgba(255,255,255,.12); margin:8px 16px;">
-+      <div style="padding:6px 16px; font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; color:#8a8a8a;">Main Admin</div>
++      <div style="padding:6px 16px; font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; color:#8a8a8a;">Company</div>
 +      <a href="{% url 'core:withdrawal_requests_admin' %}" class="{% if request.resolver_match.url_name == 'withdrawal_requests_admin' %}active{% endif %}">
 +        Withdrawal Requests
 +        {% if pending_withdrawals_count %}<span class="sidebar-badge">{{ pending_withdrawals_count }}</span>{% endif %}
@@ -716,7 +716,7 @@ index 5e71ddb..f276d63 100644
 -    </tbody>
 -  </table>
 -  {% endif %}
-+    Moved to its own page for the Main Admin.
++    Moved to its own page for the Company.
 +  </p>
 +  <a class="btn" href="{% url 'core:withdrawal_requests_admin' %}">Go to Withdrawal Requests</a>
  </div>

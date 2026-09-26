@@ -24,25 +24,25 @@
 }
 
 [data-theme="dark"] {
-  --color-primary: #CFF27E;
-  --color-primary-soft: #a8d858;
-  --color-secondary: #F2DD6E;
-  --color-secondary-soft: #d9c65a;
-  --color-accent: #E5B25D;
-  --color-bg: #221E22;
-  --color-surface: #31263E;
-  --color-surface-alt: #44355B;
-  --color-text: #F5F3F7;
-  --color-text-muted: #b8aec4;
-  --color-border: #4d3d63;
+  --color-primary: #9B9FE8;      /* the lavender "NABISWA LOGIC" title glow */
+  --color-primary-soft: #C7CAF2;
+  --color-secondary: #F2989D;    /* the coral/red streak in the photo */
+  --color-secondary-soft: #FCAAAE;
+  --color-accent: #8FD9FF;       /* the cyan binary/wireframe glow */
+  --color-bg: #0A0F2B;           /* deep navy from the photo, not black */
+  --color-surface: #181D4E;
+  --color-surface-alt: #232A63;
+  --color-text: #ECEAFF;
+  --color-text-muted: #9B9DC7;
+  --color-border: #333B72;
 
   --status-success: #4fd17a;
   --status-warning: #e8c34a;
   --status-danger: #ef6767;
   --status-info: #6aa6f2;
 
-  --color-accent-alt-1: #502f4c;
-  --color-accent-alt-2: #70587c;
+  --color-accent-alt-1: #1B2050;
+  --color-accent-alt-2: #333B72;
 }
 
 * { box-sizing: border-box; }
@@ -58,13 +58,12 @@ body {
   margin: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background:
-    linear-gradient(color-mix(in srgb, var(--color-bg) 82%, transparent),
-                     color-mix(in srgb, var(--color-bg) 82%, transparent)),
-    url("/static/images/LOGIC.png") center center / cover fixed no-repeat;
+    linear-gradient(color-mix(in srgb, var(--color-bg) 40%, transparent),
+                     color-mix(in srgb, var(--color-bg) 40%, transparent)),
+    url("/static/images/LOGIC.jpg") center center / cover fixed no-repeat;
   color: var(--color-text);
   transition: background-color .2s ease, color .2s ease;
 }
-
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; position: relative; z-index: 1; }
 
 /* Soft floating circles drift on top of the background photo, behind the

@@ -30,7 +30,7 @@ class SystemSettings(models.Model):
     timezone = models.CharField(max_length=64, default='Africa/Nairobi')
 
     # Total capital/amount the business has spent/invested to date. Set
-    # once here (Main Admin only, from the revenue portal or Django
+    # once here (Company only, from the revenue portal or Django
     # admin) so that Shareholder.save() can auto-derive each
     # shareholder's percentage from their contribution instead of it
     # being hand-entered and drifting out of sync.
@@ -102,7 +102,7 @@ class CustomerFeedback(models.Model):
     haven't necessarily bought a package or created an account yet), and
     keyed to the device's MAC address so staff can cross-reference it
     against sessions/payments if the customer doesn't fully identify
-    themselves. Visible to the Main Admin and every Shareholder from the
+    themselves. Visible to the Company and every Shareholder from the
     revenue/admin portal (see core.views.feedback_list).
     """
     name = models.CharField(max_length=150, blank=True)

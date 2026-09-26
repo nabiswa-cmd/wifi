@@ -29,7 +29,7 @@ class VoucherBatch(models.Model):
 
     # Approval workflow (Revenue Visibility for All Shareholders): a
     # shareholder can REQUEST a batch, but codes are only ever generated
-    # once the Main Admin approves it  never at request time.
+    # once the Company approves it  never at request time.
     approval_status = models.CharField(max_length=10, choices=ApprovalStatus.choices, default=ApprovalStatus.PENDING)
     approved_by = models.ForeignKey(
         'accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_voucher_batches'

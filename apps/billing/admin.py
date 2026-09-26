@@ -124,7 +124,7 @@ class ShareholderAdmin(admin.ModelAdmin):
 @admin.register(ShareIncreaseRequest)
 class ShareIncreaseRequestAdmin(admin.ModelAdmin):
     """
-    Full-visibility fallback for the Main Admin; day to day approval/
+    Full-visibility fallback for the Company; day to day approval/
     rejection happens on the branded Revenue page instead (see
     apps/core/views.py:decide_share_increase).
     """
@@ -137,7 +137,7 @@ class ShareIncreaseRequestAdmin(admin.ModelAdmin):
 @admin.register(WithdrawalRequest)
 class WithdrawalRequestAdmin(admin.ModelAdmin):
     """
-    Kept here as a full-visibility fallback for the Main Admin; day to day
+    Kept here as a full-visibility fallback for the Company; day to day
     approval/rejection happens on the branded Revenue page instead (see
     apps/core/views.py:decide_withdrawal), which is what shareholders use.
     """

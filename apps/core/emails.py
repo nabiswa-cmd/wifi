@@ -12,7 +12,7 @@ failed to send.
 Branding (business name, support contact) is always read fresh from
 SystemSettings rather than hard-coded, same rule as everywhere else in this
 app (see core.models.SystemSettings docstring)  so these emails say
-whatever the Main Admin has set as the business name (e.g. "Logic Company")
+whatever the Company has set as the business name (e.g. "Logic Company")
 without needing a code change if that ever changes.
 """
 import logging
@@ -33,23 +33,49 @@ def _currency() -> str:
     return SystemSettings.load().currency or ''
 
 
-def _send(subject, message, recipient_list, fail_context=''):
+def _send(subject, message, recipient_list, fail_context='', heading=None):
     """
     Shared send wrapper. recipient_list entries that are blank are dropped
     first so a shareholder with no email on file never raises inside
     send_mail; if nothing is left to send to, this is a silent no-op.
+
+    Sends BOTH a plain-text part (the `message` string, unchanged  used
+    by clients/spam filters that prefer plain text) and an HTML part
+    rendered from templates/emails/base_email.html, the ARTSASA-style
+    card layout recolored to the light-mode brand palette. `message` is
+    split on blank lines into paragraphs for the HTML body, so no
+    existing send_* function has to change to get an HTML email.
     """
+    from django.core.mail import EmailMultiAlternatives
+    from django.template.loader import render_to_string
+    from apps.core.models import SystemSettings
+
     recipients = [r for r in recipient_list if r]
     if not recipients:
         return
+
+    business = _business_name()
+    location = SystemSettings.load().location
+    paragraphs = [p.strip() for p in message.strip().split('\n\n') if p.strip()]
+
     try:
-        send_mail(
+        html_body = render_to_string('emails/base_email.html', {
+            'subject': subject,
+            'business_name': business,
+            'tagline': 'INTERNET & WIFI SERVICES',
+            'location': location,
+            'heading': heading or subject,
+            'paragraphs': paragraphs,
+            'highlight': None,
+        })
+        email = EmailMultiAlternatives(
             subject=subject,
-            message=message,
+            body=message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=recipients,
-            fail_silently=False,
+            to=recipients,
         )
+        email.attach_alternative(html_body, 'text/html')
+        email.send(fail_silently=False)
     except Exception:
         logger.exception('Failed to send email (%s) to %s', fail_context, recipients)
 
@@ -77,7 +103,7 @@ def send_welcome_email(user, shareholder=None):
 
 def send_withdrawal_approved_email(withdrawal):
     """
-    Sent to the shareholder once the Main Admin marks their withdrawal
+    Sent to the shareholder once the Company marks their withdrawal
     request PAID (see billing.models.WithdrawalRequest.approve_and_pay).
     """
     business = _business_name()
@@ -97,7 +123,7 @@ def send_withdrawal_approved_email(withdrawal):
 
 
 def send_withdrawal_rejected_email(withdrawal):
-    """Sent to the shareholder if the Main Admin rejects their withdrawal request."""
+    """Sent to the shareholder if the Company rejects their withdrawal request."""
     business = _business_name()
     currency = _currency()
     shareholder = withdrawal.shareholder
@@ -115,7 +141,7 @@ def send_withdrawal_rejected_email(withdrawal):
 def send_new_withdrawal_admin_notification(withdrawal):
     """
     Fired on every new withdrawal request (approved or not), straight to
-    settings.ADMIN_NOTIFICATION_EMAIL, so the Main Admin hears about a
+    settings.ADMIN_NOTIFICATION_EMAIL, so the Company hears about a
     pending request even if he isn't watching the portal.
     """
     business = _business_name()
@@ -134,7 +160,7 @@ def send_new_withdrawal_admin_notification(withdrawal):
 
 
 def send_voucher_batch_approved_email(batch):
-    """Sent to whoever requested a voucher batch once the Main Admin approves it."""
+    """Sent to whoever requested a voucher batch once the Company approves it."""
     business = _business_name()
     requester = batch.created_by
     if not requester or not requester.email:
