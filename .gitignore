@@ -10,3 +10,4 @@ venv/
 staticfiles/
 media/
 dummy.db
+.env_sever.example

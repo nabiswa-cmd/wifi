@@ -5,7 +5,7 @@
 */
 :root,
 [data-theme="light"] {
-  /* Light palette  sampled from the beach/lagoon photo (static/images/w.jpg):
+  /* Light palette  sampled from the beach/lagoon photo (static/images/n.png):
      turquoise shallows, deep teal water, palm green, sand, sky blue. */
   --color-primary: #12897E;      /* deep teal, from the lagoon water */
   --color-primary-soft: #9FE8DD; /* pale turquoise shallows */
@@ -24,7 +24,7 @@
   --status-danger: #d64545;
   --status-info: #2BA9D9;
 
-  --bg-image: url("/static/images/w.jpg");
+  --bg-image: url("/static/images/n.png");
 }
 
 [data-theme="dark"] {
