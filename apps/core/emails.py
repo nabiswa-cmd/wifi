@@ -159,6 +159,32 @@ def send_new_withdrawal_admin_notification(withdrawal):
     _send(subject, message, [settings.ADMIN_NOTIFICATION_EMAIL], fail_context='admin withdrawal notification')
 
 
+def send_router_disconnected_email(router, minutes_silent):
+    """MikroTik agent stopped reporting: tell the Company straight away."""
+    business = _business_name()
+    subject = f'MikroTik disconnected: {router.name}'
+    message = (
+        f'The router "{router.name}" ({router.host}) is disconnected.\n\n'
+        f'No heartbeat from the on-site agent for about {minutes_silent} minute(s). '
+        'Customers cannot be connected or disconnected until it is back.\n\n'
+        'Check the router power, its internet link and that the agent is running.'
+    )
+    _send(subject, message, [settings.ADMIN_NOTIFICATION_EMAIL], fail_context='router disconnected alert')
+
+
+def send_pending_jobs_email(count, oldest_minutes):
+    """Many MikroTik tasks have been waiting for the agent for over a minute."""
+    business = _business_name()
+    subject = f'{count} pending MikroTik tasks: {business}'
+    message = (
+        f'{count} MikroTik task(s) have been pending for more than a minute '
+        f'(the oldest for about {oldest_minutes} minute(s)).\n\n'
+        'The agent is probably offline or stuck. The tasks will run by themselves '
+        'once it reconnects.'
+    )
+    _send(subject, message, [settings.ADMIN_NOTIFICATION_EMAIL], fail_context='pending jobs alert')
+
+
 def send_voucher_batch_approved_email(batch):
     """Sent to whoever requested a voucher batch once the Company approves it."""
     business = _business_name()

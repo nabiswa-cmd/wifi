@@ -125,14 +125,22 @@
   /* ---- Added styles. Kept inline on purpose so they work even when the
      collected/hashed static CSS is stale. ---- */
   .tile-section { margin: 18px 2px 8px; font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-muted); }
-  .tile-section span { text-transform: none; letter-spacing: 0; opacity: .8; }
   .tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 10px; }
   .stat-tile {
     position: relative; display: flex; align-items: center; gap: 12px; padding: 14px; min-width: 0;
     background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px;
-    color: inherit; text-decoration: none; transition: border-color .15s ease, transform .15s ease;
+    color: inherit; text-decoration: none;
+    transition: background-color .25s ease, border-color .25s ease, box-shadow .25s ease;
   }
-  a.stat-tile:hover { border-color: var(--color-primary); transform: translateY(-1px); }
+  /* Soft, warm hover: a gentle tint and a cushion of shadow, like pressing into a card */
+  a.stat-tile:hover, a.stat-tile:focus-visible {
+    background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface));
+    border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .10);
+  }
+  a.stat-tile:active { box-shadow: 0 2px 6px rgba(0, 0, 0, .12); }
+  a.stat-tile .stat-go { transition: transform .25s ease, color .25s ease; }
+  a.stat-tile:hover .stat-go { transform: translateX(3px); color: var(--color-primary); }
   a.stat-tile:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
   .stat-icon {
     position: relative; flex: 0 0 42px; width: 42px; height: 42px; border-radius: 50%;
@@ -150,7 +158,6 @@
   .stat-label { font-size: .78rem; color: var(--color-text-muted); font-weight: 600; }
   .stat-value { font-size: 1.5rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
   .stat-value small { font-size: .8rem; font-weight: 600; color: var(--color-text-muted); }
-  .stat-hint { font-size: .72rem; color: var(--color-text-muted); line-height: 1.3; margin-top: 2px; }
   .stat-go { color: var(--color-text-muted); font-size: .9rem; }
 
   /* Charts: two columns on large screens, stacked (revenue first, devices
@@ -168,7 +175,7 @@
     .stat-tile { padding: 10px; gap: 8px; }
     .stat-icon { flex-basis: 34px; width: 34px; height: 34px; font-size: 1rem; }
     .stat-value { font-size: 1.2rem; }
-    .stat-hint, .stat-go { display: none; }
+    .stat-go { display: none; }
     .chart-box { height: 220px; }
   }
 
@@ -180,7 +187,7 @@
   .filter-bar .search-box input { width: 100%; padding-left: 32px; }
   .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip {
-    display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: .8rem; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; font-size: .8rem; white-space: nowrap;
     border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); text-decoration: none;
   }
   .chip:hover { border-color: var(--color-primary); }
@@ -195,7 +202,7 @@
   .cust-sub { color: var(--color-text-muted); font-size: .75rem; }
   .online-dot { color: var(--status-success); font-weight: 600; }
   .online-dot i { font-size: .5rem; vertical-align: middle; }
-  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .68rem; font-weight: 700; border: 1px solid currentColor; white-space: nowrap; }
+  .pill { display: inline-block; margin-left: 4px; font-size: .75rem; font-weight: 600; white-space: nowrap; }
   .pill-recent { color: var(--status-success); }
   .pill-cooling { color: var(--status-warning); }
   .pill-lapsed { color: var(--status-danger); }

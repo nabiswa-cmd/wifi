@@ -7,21 +7,20 @@
   <h2 style="margin:0; font-family:'Tangerine',cursive; font-size:2rem; font-weight:400;">{{ greeting }}, {{ display_name }} 👋</h2>
 </div>
 
-<h4 class="tile-section">Revenue <span>&middot; click a tile to see the payments behind it</span></h4>
+<h4 class="tile-section">Revenue</h4>
 <div class="tile-grid">
-  {% include "core/_stat_tile.html" with icon="bi-cash-coin" tone="green" label="Today's Revenue" prefix=branding.currency value=todays_revenue href=tile_links.today hint="Money received today from successful payments." %}
-  {% include "core/_stat_tile.html" with icon="bi-receipt-cutoff" tone="blue" label="Today's Successful Payments" value=todays_payment_count href=tile_links.today hint="Number of confirmed payments today." %}
-  {% include "core/_stat_tile.html" with icon="bi-calendar-range-fill" tone="teal" label=current_month_label prefix=branding.currency value=company_revenue href=tile_links.cycle hint=cycle_hint %}
-  {% include "core/_stat_tile.html" with icon="bi-credit-card-2-front-fill" tone="purple" label="This cycle's payments" value=month_payment_count href=tile_links.cycle hint="Number of confirmed payments since this cycle started." %}
-  <div class="stat-tile" title="Revenue this cycle compared with the previous cycle.">
+  {% include "core/_stat_tile.html" with icon="bi-cash-coin" tone="green" label="Today's Revenue" prefix=branding.currency value=todays_revenue href=tile_links.today %}
+  {% include "core/_stat_tile.html" with icon="bi-receipt-cutoff" tone="blue" label="Today's Successful Payments" value=todays_payment_count href=tile_links.today %}
+  {% include "core/_stat_tile.html" with icon="bi-calendar-range-fill" tone="teal" label=current_month_label prefix=branding.currency value=company_revenue href=tile_links.cycle %}
+  {% include "core/_stat_tile.html" with icon="bi-credit-card-2-front-fill" tone="purple" label="This cycle's payments" value=month_payment_count href=tile_links.cycle %}
+  <div class="stat-tile">
     <span class="stat-icon {% if growth_pct < 0 %}tone-red{% else %}tone-green{% endif %}"><i class="bi {% if growth_pct < 0 %}bi-graph-down-arrow{% else %}bi-graph-up-arrow{% endif %}" aria-hidden="true"></i></span>
     <span class="stat-body">
       <span class="stat-label">Growth vs Previous Cycle</span>
       <span class="stat-value">{% if growth_pct > 0 %}+{% endif %}{{ growth_pct }}%</span>
-      <span class="stat-hint">This cycle compared with the previous one.</span>
     </span>
   </div>
-  {% include "core/_stat_tile.html" with icon="bi-clock-history" tone="amber" label=previous_tile_label prefix=branding.currency value=prev_month_revenue href=tile_links.previous hint="Total revenue of the last closed cycle." %}
+  {% include "core/_stat_tile.html" with icon="bi-clock-history" tone="amber" label=previous_tile_label prefix=branding.currency value=prev_month_revenue href=tile_links.previous %}
 </div>
 
 <div class="grid" style="grid-template-columns: 1fr; margin-top:4px;">

@@ -5,16 +5,14 @@
 
 <div class="chip-row" role="tablist" aria-label="Customer groups">
   {% for c in chips %}
-  <a class="chip {% if c.active %}active{% endif %}" href="{{ c.href }}"><i class="bi {{ c.icon }}" aria-hidden="true"></i> {{ c.label }} <span class="chip-count">{{ c.count }}</span></a>
+  <a class="chip {% if c.active %}active{% endif %}" href="{{ c.href }}">{{ c.label }} <span class="chip-count">{{ c.count }}</span></a>
   {% endfor %}
 </div>
 
 <div class="card" style="margin-top:12px;">
   <div class="list-head">
-    <span class="stat-icon tone-teal"><i class="bi {{ current.icon }}" aria-hidden="true"></i></span>
     <div>
       <h3 style="margin:0;">{{ current.label }} <span class="list-count">{{ total_found }}</span></h3>
-      <p class="list-meaning">{{ current.meaning }}</p>
     </div>
   </div>
 
@@ -63,10 +61,5 @@
     </tbody>
   </table>
   {% include "core/_pager.html" %}
-  <p class="list-meaning" style="margin-bottom:0;">
-    <strong>Recent buyer</strong> = bought in the last {{ recent_days }} days &middot;
-    <strong>Cooling off</strong> = {{ recent_days }}&ndash;{{ lapsed_days }} days &middot;
-    <strong>Lapsed</strong> = more than {{ lapsed_days }} days. Purchases count every package given (M-Pesa, voucher or staff-added).
-  </p>
 </div>
 {% endblock %}

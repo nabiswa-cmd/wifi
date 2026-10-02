@@ -6,24 +6,24 @@
   <h2 style="margin:0; font-family:'Tangerine',cursive; font-size:2rem; font-weight:400;">{{ greeting }}, {{ display_name }} 👋</h2>
 </div>
 
-<h4 class="tile-section">Customers <span>&middot; click a tile to see the people behind the number</span></h4>
+<h4 class="tile-section">Customers</h4>
 <div class="tile-grid">
-  {% include "core/_stat_tile.html" with icon="bi-people-fill" tone="blue" label="Total Customers" value=total_customers href=tile_links.customers_all hint="Everyone who has ever connected or bought a package." %}
-  {% include "core/_stat_tile.html" with icon="bi-person-check-fill" tone="teal" label="Active Customers" value=active_customers href=tile_links.customers_active hint="Accounts in good standing (not suspended or blocked). Not the same as having internet time left." %}
-  {% include "core/_stat_tile.html" with icon="bi-wifi" tone="green" label="Active Users" value=active_users href=tile_links.customers_subscribed hint="Customers with a paid package that has not run out yet." %}
-  {% include "core/_stat_tile.html" with icon="bi-broadcast" tone="purple" label="Online Users" value=online_users href=tile_links.customers_online hint="Customers with a device connected to the hotspot right now." %}
-  {% include "core/_stat_tile.html" with icon="bi-person-x-fill" tone="red" label="Expired Customers" value=expired_customers href=tile_links.customers_expired hint="Customers whose package ran out and who have not renewed." %}
-  {% include "core/_stat_tile.html" with icon="bi-clock-history" tone="amber" label="Lapsed Customers" value=lapsed_customers href=tile_links.customers_lapsed hint="Bought before, but nothing in the last 30 days." %}
+  {% include "core/_stat_tile.html" with icon="bi-people-fill" tone="blue" label="Total Customers" value=total_customers href=tile_links.customers_all %}
+  {% include "core/_stat_tile.html" with icon="bi-person-check-fill" tone="teal" label="Active Customers" value=active_customers href=tile_links.customers_active %}
+  {% include "core/_stat_tile.html" with icon="bi-wifi" tone="green" label="Active Users" value=active_users href=tile_links.customers_subscribed %}
+  {% include "core/_stat_tile.html" with icon="bi-broadcast" tone="purple" label="Online Users" value=online_users href=tile_links.customers_online %}
+  {% include "core/_stat_tile.html" with icon="bi-person-x-fill" tone="red" label="Expired Customers" value=expired_customers href=tile_links.customers_expired %}
+  {% include "core/_stat_tile.html" with icon="bi-clock-history" tone="amber" label="Lapsed Customers" value=lapsed_customers href=tile_links.customers_lapsed %}
 </div>
 
-<h4 class="tile-section">Today <span>&middot; payments and connections since midnight</span></h4>
+<h4 class="tile-section">Today</h4>
 <div class="tile-grid">
-  {% include "core/_stat_tile.html" with icon="bi-cash-coin" tone="green" label="Today's Revenue" prefix=branding.currency value=todays_revenue href=tile_links.pay_revenue hint="Money received today from successful payments." %}
-  {% include "core/_stat_tile.html" with icon="bi-receipt" tone="blue" label="Today's Payments" value=todays_payments href=tile_links.pay_all hint="Every payment attempt today, whatever the outcome." %}
-  {% include "core/_stat_tile.html" with icon="bi-check-circle-fill" tone="green" label="Successful Payments" value=successful_payments href=tile_links.pay_revenue hint="Payments confirmed by M-Pesa today." %}
-  {% include "core/_stat_tile.html" with icon="bi-x-circle-fill" tone="red" label="Failed Payments" value=failed_payments href=tile_links.pay_failed hint="Failed, cancelled or timed-out payments today." %}
-  {% include "core/_stat_tile.html" with icon="bi-hourglass-split" tone="amber" label="Pending Payments" value=pending_payments href=tile_links.pay_pending hint="Payments started today that M-Pesa has not confirmed yet." %}
-  {% include "core/_stat_tile.html" with icon="bi-box-arrow-in-right" tone="teal" label="Today's Sessions" value=todays_sessions href=tile_links.customers_today hint="Hotspot connections started today. The list shows the customers behind them." %}
+  {% include "core/_stat_tile.html" with icon="bi-cash-coin" tone="green" label="Today's Revenue" prefix=branding.currency value=todays_revenue href=tile_links.pay_revenue %}
+  {% include "core/_stat_tile.html" with icon="bi-receipt" tone="blue" label="Today's Payments" value=todays_payments href=tile_links.pay_all %}
+  {% include "core/_stat_tile.html" with icon="bi-check-circle-fill" tone="green" label="Successful Payments" value=successful_payments href=tile_links.pay_revenue %}
+  {% include "core/_stat_tile.html" with icon="bi-x-circle-fill" tone="red" label="Failed Payments" value=failed_payments href=tile_links.pay_failed %}
+  {% include "core/_stat_tile.html" with icon="bi-hourglass-split" tone="amber" label="Pending Payments" value=pending_payments href=tile_links.pay_pending %}
+  {% include "core/_stat_tile.html" with icon="bi-box-arrow-in-right" tone="teal" label="Today's Sessions" value=todays_sessions href=tile_links.customers_today %}
 </div>
 
 <h4 class="tile-section">Trends</h4>

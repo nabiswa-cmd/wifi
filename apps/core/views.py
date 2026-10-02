@@ -311,7 +311,6 @@ def revenue_dashboard(request):
         'total_capital': total_capital,
         'todays_revenue': todays_revenue,
         'todays_payment_count': todays_payment_count,
-        'cycle_hint': f'Revenue so far this cycle. Day {period.day_number}, started {timezone.localtime(period.start_at):%d %b %Y}.',
         'previous_tile_label': previous_period.label if previous_period else 'Previous Cycle',
         'tile_links': {
             'today': _link('core:payments', status='SUCCESS', date_from=today.isoformat(), date_to=today.isoformat()),

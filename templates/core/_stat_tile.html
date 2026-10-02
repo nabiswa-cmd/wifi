@@ -1,13 +1,12 @@
 {% comment %}
 Dashboard tile. Params: icon (Bootstrap Icons class), tone (blue/green/amber/red/teal/purple),
-label, value, prefix (optional, e.g. currency), hint (plain-English meaning), href (optional;
+label, value, prefix (optional, e.g. currency), href (optional;
 without it the tile is not clickable).
 {% endcomment %}
-{% if href %}<a class="stat-tile" href="{{ href }}" title="{{ hint }}">{% else %}<div class="stat-tile" title="{{ hint }}">{% endif %}
+{% if href %}<a class="stat-tile" href="{{ href }}">{% else %}<div class="stat-tile">{% endif %}
   <span class="stat-icon tone-{{ tone }}"><i class="bi {{ icon }}" aria-hidden="true"></i></span>
   <span class="stat-body">
     <span class="stat-label">{{ label }}</span>
     <span class="stat-value">{% if prefix %}<small>{{ prefix }}</small> {% endif %}{{ value }}</span>
-    <span class="stat-hint">{{ hint }}</span>
   </span>
   {% if href %}<i class="bi bi-chevron-right stat-go" aria-hidden="true"></i></a>{% else %}</div>{% endif %}

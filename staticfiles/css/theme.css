@@ -5,7 +5,7 @@
 */
 :root,
 [data-theme="light"] {
-  /* Light palette  sampled from the beach/lagoon photo (static/images/s.webp):
+  /* Light palette  sampled from the beach/lagoon photo (static/images/w.jpg):
      turquoise shallows, deep teal water, palm green, sand, sky blue. */
   --color-primary: #12897E;      /* deep teal, from the lagoon water */
   --color-primary-soft: #9FE8DD; /* pale turquoise shallows */
@@ -24,31 +24,34 @@
   --status-danger: #d64545;
   --status-info: #2BA9D9;
 
-  --bg-image: url("/static/images/s.webp");
+  --bg-image: url("/static/images/w.jpg");
 }
 
 [data-theme="dark"] {
-  --color-primary: #9B9FE8;      /* the lavender "NABISWA LOGIC" title glow */
-  --color-primary-soft: #C7CAF2;
-  --color-secondary: #F2989D;    /* the coral/red streak in the photo */
-  --color-secondary-soft: #FCAAAE;
-  --color-accent: #8FD9FF;       /* the cyan binary/wireframe glow */
-  --color-bg: #0A0F2B;           /* deep navy from the photo, not black */
-  --color-surface: #181D4E;
-  --color-surface-alt: #232A63;
-  --color-text: #ECEAFF;
-  --color-text-muted: #9B9DC7;
-  --color-border: #333B72;
+  /* Dark palette sampled from the bird-of-paradise photo (static/images/paradise.jpg):
+     black ground, flame orange and yellow petals, rust-red sepals, deep blue
+     bracts and the green leaf. */
+  --color-primary: #F28A1E;      /* flame orange petals */
+  --color-primary-soft: #FFC266;
+  --color-secondary: #F5C400;    /* yellow centre petal */
+  --color-secondary-soft: #FFE27A;
+  --color-accent: #4DA6D6;       /* blue bracts, lifted for contrast on black */
+  --color-bg: #05070A;           /* the photo's black */
+  --color-surface: #140D09;      /* burnt-brown black */
+  --color-surface-alt: #22140D;
+  --color-text: #FFF1E2;
+  --color-text-muted: #C2A48E;
+  --color-border: #4A2411;       /* rust sepal */
 
-  --status-success: #4fd17a;
-  --status-warning: #e8c34a;
-  --status-danger: #ef6767;
-  --status-info: #6aa6f2;
+  --status-success: #7DC243;     /* leaf green */
+  --status-warning: #F5C400;
+  --status-danger: #EB4B2D;      /* red-orange */
+  --status-info: #4DA6D6;
 
-  --color-accent-alt-1: #1B2050;
-  --color-accent-alt-2: #333B72;
+  --color-accent-alt-1: #1B0F0A;
+  --color-accent-alt-2: #4A2411;
 
-  --bg-image: url("/static/images/LOGIC.jpg");
+  --bg-image: url("/static/images/paradise.jpg");
 }
 
 * { box-sizing: border-box; }
