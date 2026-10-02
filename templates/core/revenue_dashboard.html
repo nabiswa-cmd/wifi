@@ -37,7 +37,7 @@
 <div class="card" style="margin-top:12px;" id="company-wallet">
   <h3 style="margin-top:0;">Company Wallet</h3>
   <p class="price">{{ branding.currency }} {{ wallet_balance }}</p>
-  <p style="color:var(--color-text-muted); font-size:.8rem; margin-top:0;">Money available in the company right now. It goes down when the subscription is paid and when shareholders are paid out.</p>
+ 
   <div style="overflow-x:auto;">
   <table style="width:100%;">
     <thead><tr><th style="text-align:left;">When</th><th style="text-align:left;">What</th><th style="text-align:right;">Amount</th><th style="text-align:right;">Wallet after</th></tr></thead>
@@ -108,7 +108,7 @@
     {% csrf_token %}
     <input type="hidden" name="period_id" value="{{ cp.id }}">
     <button class="btn" type="submit">Pay all shareholders</button>
-    <span style="color:var(--color-text-muted); font-size:.8rem;">Send the money first, then press this &mdash; each shareholder is emailed what they were paid.</span>
+    
   </form>
   {% endif %}
 </div>
@@ -282,8 +282,7 @@
     {% if my_balance.pending %}<tr><td>Awaiting approval</td><td style="text-align:right;">&minus; {{ branding.currency }} {{ my_balance.pending }}</td></tr>{% endif %}
     <tr style="font-weight:700; color:var(--color-primary);"><td>Available to withdraw (your balance)</td><td style="text-align:right;">{{ branding.currency }} {{ available_to_withdraw }}</td></tr>
   </table>
-  <p style="color:var(--color-text-muted); font-size:.8rem; margin:6px 0 0;">Your balance carries over from cycle to cycle &mdash; it does not reset when a new cycle starts. <a href="{% url 'core:my_transactions' %}">See all my transactions &rarr;</a></p>
-
+ 
 
   {% if available_to_withdraw > 0 %}
   <button class="btn" id="toggle-withdraw-form" type="button" style="margin-top:8px;">Request Withdrawal</button>

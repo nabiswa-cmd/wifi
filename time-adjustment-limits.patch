@@ -971,7 +971,7 @@ index 0000000..4002187
 +      <tr>
 +        <td data-label="Shareholder">{{ r.requester }}</td>
 +        <td data-label="Used today">{{ r.used_today }} of {{ r.limit_today }}</td>
-+        <td data-label="Reason">{{ r.note|default:"—" }}</td>
++        <td data-label="Reason">{{ r.note|default:" " }}</td>
 +        <td data-label="Requested">{{ r.created_at|date:"d M Y H:i" }}</td>
 +        <td data-label="Action">
 +          <form method="post" action="{% url 'core:decide_time_adjustment_request' r.id %}" data-spin

@@ -45,10 +45,7 @@
     </tbody>
   </table>
   </div>
-  <p style="color:var(--color-text-muted); font-size:.8rem; margin-bottom:0;">
-    Total earned includes the cycle in progress. Withdrawn counts approved withdrawals plus profit paid with
-    &ldquo;Pay all shareholders&rdquo;. Remaining balance = earned &minus; withdrawn.
-  </p>
+ 
 </div>
 
 <div class="card" style="margin-top:12px;">
@@ -103,9 +100,7 @@
 
 <div class="card" style="margin-top:12px;">
   <h3 style="margin-top:0;">Adjust Wallet</h3>
-  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
-    For an opening balance, or a payment the system didn't record. Positive adds to the wallet, negative takes away.
-  </p>
+ 
   <form method="post" action="{% url 'core:add_wallet_adjustment' %}" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;"
         onsubmit="return confirm('Adjust the company wallet by this amount?');">
     {% csrf_token %}
