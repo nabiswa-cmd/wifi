@@ -53,6 +53,14 @@ def _can_view_revenue_dashboard(user):
     return user.is_authenticated and _staff_role_name(user) in ('SUPER_ADMIN', 'SHAREHOLDER')
 
 
+def _link(url_name, **params):
+    """reverse(url_name) plus a query string, skipping empty params."""
+    from urllib.parse import urlencode
+    url = reverse(url_name)
+    params = {k: v for k, v in params.items() if v not in (None, '')}
+    return f'{url}?{urlencode(params)}' if params else url
+
+
 @login_required(login_url='core:admin_login')
 def dashboard(request):
     """
@@ -63,6 +71,7 @@ def dashboard(request):
     from datetime import timedelta
     from apps.customers.models import Customer
     from apps.billing.models import Payment, Subscription
+    from apps.core import customer_insights as insights
     from apps.mikrotik.models import InternetSession
 
     today = timezone.localdate()
@@ -113,11 +122,13 @@ def dashboard(request):
         'monthly_labels': monthly_labels,
         'monthly_totals': monthly_totals,
         'total_customers': Customer.objects.count(),
-        'active_customers': Customer.objects.filter(status=Customer.Status.ACTIVE).count(),
-        'expired_customers': Customer.objects.filter(
-            package_expiry__lt=timezone.now()
-        ).exclude(package_expiry__isnull=True).count(),
-        'online_users': InternetSession.objects.filter(status='ACTIVE').count(),
+        'active_customers': insights.count('active_account'),
+        # Every customer tile uses customer_insights, the same code the
+        # Customers page uses for its list, so a tile's number always equals
+        # the number of rows you see after clicking it.
+        'expired_customers': insights.count('expired'),
+        'online_users': insights.count('online'),
+        'lapsed_customers': insights.count('lapsed'),
         'todays_revenue': revenue_today,
         'todays_payments': payments_today.count(),
         'successful_payments': payments_today.filter(status=Payment.Status.SUCCESS).count(),
@@ -125,11 +136,26 @@ def dashboard(request):
             status__in=[Payment.Status.FAILED, Payment.Status.CANCELLED, Payment.Status.TIMEOUT]
         ).count(),
         'pending_payments': payments_today.filter(status=Payment.Status.PENDING).count(),
-        'active_packages': Subscription.objects.filter(status=Subscription.Status.ACTIVE).count(),
+        'active_users': insights.count('subscribed'),
         'todays_sessions': InternetSession.objects.filter(login_time__date=today).count(),
         'chart_labels': [d.strftime('%d %b') for d in chart_days],
         'chart_revenue': [float(revenue_by_day.get(d, 0)) for d in chart_days],
         'chart_sessions': [sessions_by_day.get(d, 0) for d in chart_days],
+        'tile_links': {
+            'customers_all': _link('core:customer_list', filter='all'),
+            'customers_active': _link('core:customer_list', filter='active_account'),
+            'customers_subscribed': _link('core:customer_list', filter='subscribed'),
+            'customers_online': _link('core:customer_list', filter='online'),
+            'customers_expired': _link('core:customer_list', filter='expired'),
+            'customers_lapsed': _link('core:customer_list', filter='lapsed'),
+            'customers_today': _link('core:customer_list', filter='connected_today'),
+            'pay_revenue': _link('core:payments', status='SUCCESS', date_from=today.isoformat(), date_to=today.isoformat()),
+            'pay_all': _link('core:payments', date_from=today.isoformat(), date_to=today.isoformat()),
+            'pay_failed': _link('core:payments', status='FAILED,CANCELLED,TIMEOUT',
+                                date_from=today.isoformat(), date_to=today.isoformat()),
+            'pay_pending': _link('core:payments', status='PENDING',
+                                 date_from=today.isoformat(), date_to=today.isoformat()),
+        },
     }
     return render(request, 'core/dashboard.html', context)
 
@@ -285,6 +311,13 @@ def revenue_dashboard(request):
         'total_capital': total_capital,
         'todays_revenue': todays_revenue,
         'todays_payment_count': todays_payment_count,
+        'cycle_hint': f'Revenue so far this cycle. Day {period.day_number}, started {timezone.localtime(period.start_at):%d %b %Y}.',
+        'previous_tile_label': previous_period.label if previous_period else 'Previous Cycle',
+        'tile_links': {
+            'today': _link('core:payments', status='SUCCESS', date_from=today.isoformat(), date_to=today.isoformat()),
+            'cycle': _link('core:payments', status='SUCCESS', cycle='current'),
+            'previous': _link('core:payments', status='SUCCESS', cycle='previous') if previous_period else '',
+        },
         'company_revenue': company_revenue,
         'month_payment_count': month_payment_count,
         'prev_month_revenue': prev_month_revenue,
@@ -947,8 +980,22 @@ def payment_management(request):
 
     qs = Payment.objects.select_related('customer', 'package').order_by('-created_at')
     params = request.GET
-    if params.get('status'):
-        qs = qs.filter(status=params['status'])
+    statuses = [x for x in (params.get('status') or '').split(',') if x]
+    if statuses:
+        qs = qs.filter(status__in=statuses)
+    cycle = params.get('cycle')
+    cycle_label = ''
+    if cycle in ('current', 'previous'):
+        from apps.billing.models import EarningsPeriod
+        if cycle == 'current':
+            period = EarningsPeriod.current()
+            qs = qs.filter(created_at__gte=period.start_at)
+            cycle_label = f'{period.label} (current cycle)'
+        else:
+            period = EarningsPeriod.objects.filter(end_at__isnull=False).order_by('-start_at').first()
+            if period is not None:
+                qs = qs.filter(created_at__gte=period.start_at, created_at__lt=period.end_at)
+                cycle_label = f'{period.label} (previous cycle)'
     if params.get('phone'):
         qs = qs.filter(phone_number__icontains=params['phone'])
     if params.get('date_from'):
@@ -972,30 +1019,157 @@ def payment_management(request):
         failed=Count('id', filter=Q(status__in=['FAILED', 'CANCELLED', 'TIMEOUT'])),
         pending=Count('id', filter=Q(status='PENDING')),
     )
-    return render(request, 'core/payments.html', {'payments': qs[:200], 'totals': totals})
+    return render(request, 'core/payments.html', {
+        'payments': qs[:200], 'totals': totals,
+        'selected_status': ','.join(statuses),
+        'cycle_label': cycle_label,
+        'filters_active': bool(statuses or cycle_label or params.get('phone')
+                               or params.get('date_from') or params.get('date_to')),
+    })
 
 
 @login_required(login_url='core:admin_login')
 def subscription_management(request):
-    """Section 22: full subscription/entitlement history, never overwritten."""
+    """
+    Section 22: full subscription/entitlement history, never overwritten.
+
+    Search (name / phone / M-Pesa receipt), status, package and "customer's
+    last purchase" filters, plus sorting so you can see who bought most
+    recently or who has not bought for the longest. Each row shows how many
+    times that customer has purchased.
+    """
+    from django.core.paginator import Paginator
+    from django.db.models import F
     from apps.billing.models import Subscription
-
+    from apps.core import customer_insights as insights
     from apps.core import time_adjustments as ta
+    from apps.packages.models import InternetPackage
 
-    qs = Subscription.objects.select_related('customer', 'package').order_by('-created_at')
-    status_param = request.GET.get('status')
-    if status_param:
-        qs = qs.filter(status=status_param)
+    if _staff_role_name(request.user) is None:
+        return HttpResponse('Forbidden.', status=403)
+
+    params = request.GET
+    now = timezone.now()
+    qs = Subscription.objects.select_related('customer', 'package', 'payment').annotate(
+        **{('cust_' + k): v for k, v in insights.purchase_annotations('customer_id').items()}
+    )
+
+    q = (params.get('q') or '').strip()
+    if q:
+        qs = qs.filter(
+            Q(customer__full_name__icontains=q) | Q(customer__phone_number__icontains=q)
+            | Q(payment__mpesa_receipt_number__icontains=q) | Q(package__name__icontains=q)
+        )
+    status = params.get('status') or ''
+    if status in Subscription.Status.values:
+        qs = qs.filter(status=status)
+    package = params.get('package') or ''
+    if package.isdigit():
+        qs = qs.filter(package_id=int(package))
+    last = params.get('last') or ''
+    cond = insights.recency_q(last, field='cust_last_purchase', now=now) if last else None
+    if cond is not None:
+        qs = qs.filter(cond)
+
+    sort = params.get('sort') or 'newest'
+    ordering = {
+        'newest': ['-created_at'],
+        'oldest': ['created_at'],
+        'lapsed': [F('cust_last_purchase').asc(nulls_last=True), '-created_at'],
+        'most': ['-cust_purchase_count', '-created_at'],
+    }.get(sort) or ['-created_at']
+    qs = qs.order_by(*ordering)
+
+    page = Paginator(qs, 50).get_page(params.get('page'))
+    rows = list(page.object_list)
+    for sub in rows:
+        sub.last_ago = insights.ago(sub.cust_last_purchase, now)
+        sub.recency_key, sub.recency_label = insights.recency(sub.cust_last_purchase, now)
+
+    from urllib.parse import urlencode
+    keep = {k: v for k, v in {'q': q, 'status': status, 'package': package, 'last': last, 'sort': sort}.items()
+            if v and not (k == 'sort' and v == 'newest')}
 
     is_main_admin = _is_main_admin(request.user)
     return render(request, 'core/subscriptions.html', {
-        'subscriptions': qs[:200],
+        'subscriptions': rows,
+        'page_obj': page,
+        'base_qs': urlencode(keep),
+        'q': q, 'sel_status': status, 'sel_package': package, 'sel_last': last, 'sel_sort': sort,
+        'status_choices': Subscription.Status.choices,
+        'packages': InternetPackage.objects.order_by('display_order', 'name'),
+        'filters_active': bool(keep),
+        'recent_days': insights.RECENT_DAYS, 'lapsed_days': insights.LAPSED_DAYS,
         'is_main_admin': is_main_admin,
         # Shareholders see their daily quota; the Main Admin has none.
         'quota': None if is_main_admin else ta.allowance(request.user),
         'today': timezone.localdate(),
         'max_minutes': ta.MAX_MINUTES_PER_ADJUSTMENT,
     })
+
+
+@login_required(login_url='core:admin_login')
+def customer_list(request):
+    """
+    The lists behind the dashboard tiles. ``?filter=`` picks one of the named
+    groups in apps/core/customer_insights.py (online, active users, expired,
+    lapsed ...), ``?q=`` searches name / phone / email, ``?sort=`` orders by
+    purchase recency, number of purchases or spend.
+    """
+    from urllib.parse import urlencode
+    from django.core.paginator import Paginator
+    from django.db.models import Q
+    from apps.core import customer_insights as insights
+
+    if _staff_role_name(request.user) is None:
+        return HttpResponse('Forbidden.', status=403)
+
+    now = timezone.now()
+    key = request.GET.get('filter') or 'all'
+    if key not in insights.FILTERS:
+        key = 'all'
+    sort = request.GET.get('sort') or 'recent'
+    if sort not in insights.SORTS:
+        sort = 'recent'
+    q = (request.GET.get('q') or '').strip()
+
+    qs = insights.customers(key, now)
+    if q:
+        qs = qs.filter(
+            Q(full_name__icontains=q) | Q(phone_number__icontains=q)
+            | Q(email__icontains=q) | Q(username__icontains=q)
+        )
+    qs = qs.order_by(*insights.SORTS[sort][1])
+
+    page = Paginator(qs, 50).get_page(request.GET.get('page'))
+    rows = list(page.object_list)
+    for c in rows:
+        c.last_ago = insights.ago(c.last_purchase, now)
+        c.recency_key, c.recency_label = insights.recency(c.last_purchase, now)
+        c.expiry_ago = insights.ago(c.package_expiry, now) if c.package_expiry else ''
+        c.expiry_passed = bool(c.package_expiry and c.package_expiry < now)
+
+    def href(**over):
+        data = {'filter': key, 'sort': sort, 'q': q}
+        data.update(over)
+        data = {k: v for k, v in data.items() if v and not (k == 'sort' and v == 'recent') and not (k == 'filter' and v == 'all')}
+        return f"{reverse('core:customer_list')}{'?' + urlencode(data) if data else ''}"
+
+    chips = [{
+        'key': k, 'label': meta[0], 'icon': meta[2], 'active': k == key,
+        'count': insights.count(k, now), 'href': href(filter=k, page=''),
+    } for k, meta in insights.FILTERS.items()]
+
+    return render(request, 'core/customers.html', {
+        'customers': rows, 'page_obj': page, 'chips': chips,
+        'current': {'key': key, 'label': insights.FILTERS[key][0], 'meaning': insights.FILTERS[key][1],
+                    'icon': insights.FILTERS[key][2]},
+        'q': q, 'sort': sort, 'sorts': [(k, v[0]) for k, v in insights.SORTS.items()],
+        'base_qs': urlencode({k: v for k, v in {'filter': key, 'sort': sort, 'q': q}.items() if v}),
+        'total_found': page.paginator.count,
+        'recent_days': insights.RECENT_DAYS, 'lapsed_days': insights.LAPSED_DAYS,
+    })
+
 
 @login_required(login_url='core:admin_login')
 def voucher_management(request):

@@ -15,18 +15,22 @@
     <input type="text" name="phone" placeholder="Phone" value="{{ request.GET.phone }}" style="width:auto;">
     <select name="status" style="width:auto;">
       <option value="">All statuses</option>
-      <option value="PENDING">Pending</option>
-      <option value="SUCCESS">Success</option>
-      <option value="FAILED">Failed</option>
-      <option value="CANCELLED">Cancelled</option>
-      <option value="TIMEOUT">Timeout</option>
-      <option value="REFUNDED">Refunded</option>
+      <option value="PENDING" {% if selected_status == 'PENDING' %}selected{% endif %}>Pending</option>
+      <option value="SUCCESS" {% if selected_status == 'SUCCESS' %}selected{% endif %}>Success</option>
+      <option value="FAILED,CANCELLED,TIMEOUT" {% if selected_status == 'FAILED,CANCELLED,TIMEOUT' %}selected{% endif %}>All failed (failed, cancelled, timeout)</option>
+      <option value="FAILED" {% if selected_status == 'FAILED' %}selected{% endif %}>Failed</option>
+      <option value="CANCELLED" {% if selected_status == 'CANCELLED' %}selected{% endif %}>Cancelled</option>
+      <option value="TIMEOUT" {% if selected_status == 'TIMEOUT' %}selected{% endif %}>Timeout</option>
+      <option value="REFUNDED" {% if selected_status == 'REFUNDED' %}selected{% endif %}>Refunded</option>
     </select>
+    {% if request.GET.cycle %}<input type="hidden" name="cycle" value="{{ request.GET.cycle }}">{% endif %}
     <input type="date" name="date_from" value="{{ request.GET.date_from }}" style="width:auto;">
     <input type="date" name="date_to" value="{{ request.GET.date_to }}" style="width:auto;">
     <button class="btn" type="submit">Filter</button>
     <button class="btn btn-secondary" type="submit" name="export" value="csv">Export CSV</button>
+    {% if filters_active %}<a class="btn btn-secondary" href="{% url 'core:payments' %}">Clear filters</a>{% endif %}
   </form>
+  {% if cycle_label %}<p class="list-meaning" style="margin:-8px 0 12px;"><i class="bi bi-calendar-range"></i> Showing payments from <strong>{{ cycle_label }}</strong>.</p>{% endif %}
   <div class="card">
     <table>
       <thead><tr><th>Customer</th><th>Phone</th><th>Amount</th><th>Package</th><th>Status</th><th>Receipt</th><th>Date</th></tr></thead>

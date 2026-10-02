@@ -1,0 +1,1009 @@
+From 6eb8eb651fcc4dd98671e5f58ba695bea517bde2 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 2 Oct 2026 20:58:45 +0000
+Subject: [PATCH] Clickable dashboard tiles with icons, Customers page,
+ subscription search/sort, purchase history; stack charts on small screens
+
+---
+ apps/core/customer_insights.py        | 180 ++++++++++++++++++++++
+ apps/core/urls.py                     |   1 +
+ apps/core/views.py                    | 206 ++++++++++++++++++++++++--
+ static/css/theme.css                  |  22 ---
+ templates/core/_pager.html            |   7 +
+ templates/core/_stat_tile.html        |  13 ++
+ templates/core/admin_base.html        |  94 ++++++++++++
+ templates/core/customers.html         |  72 +++++++++
+ templates/core/dashboard.html         |  44 +++---
+ templates/core/payments.html          |  16 +-
+ templates/core/revenue_dashboard.html |  34 +++--
+ templates/core/subscriptions.html     |  36 ++++-
+ 12 files changed, 649 insertions(+), 76 deletions(-)
+ create mode 100644 apps/core/customer_insights.py
+ create mode 100644 templates/core/_pager.html
+ create mode 100644 templates/core/_stat_tile.html
+ create mode 100644 templates/core/customers.html
+
+diff --git a/apps/core/customer_insights.py b/apps/core/customer_insights.py
+new file mode 100644
+index 0000000..dd4a011
+--- /dev/null
++++ b/apps/core/customer_insights.py
+@@ -0,0 +1,180 @@
++"""
++One place that defines "who counts as what" for customers, so a dashboard
++tile and the list it links to can never disagree.
++
++Each filter below is used in two places:
++  * the dashboard tile shows ``count(key)``
++  * the Customers page shows the rows of ``customers(key)``
++
++Purchase history is worked out from Subscription rows (every package a
++customer has ever been given: M-Pesa, voucher or staff-added), so voucher
++customers are counted too. Money comes from successful M-Pesa Payments.
++"""
++from collections import OrderedDict
++from decimal import Decimal
++
++from django.db.models import Count, DecimalField, Exists, F, OuterRef, Q, Subquery, Sum, Value
++from django.db.models.functions import Coalesce
++from django.utils import timezone
++
++RECENT_DAYS = 7      # bought within this many days  -> "Recent buyer"
++LAPSED_DAYS = 30     # nothing bought for this long  -> "Lapsed"
++
++
++# --------------------------------------------------------------------------
++# Purchase history helpers (shared with the Subscriptions page)
++# --------------------------------------------------------------------------
++def _customer_subs(outer_field='pk'):
++    from apps.billing.models import Subscription
++    return Subscription.objects.filter(customer=OuterRef(outer_field)).exclude(
++        status=Subscription.Status.PENDING
++    )
++
++
++def purchase_annotations(outer_field='pk'):
++    """
++    Annotations giving a customer's number of purchases and when they last
++    bought. ``outer_field`` is 'pk' on Customer querysets and 'customer_id'
++    on Subscription querysets.
++    """
++    subs = _customer_subs(outer_field).order_by()
++    return {
++        'purchase_count': Coalesce(
++            Subquery(subs.values('customer').annotate(c=Count('id')).values('c')), 0
++        ),
++        'last_purchase': Subquery(
++            _customer_subs(outer_field).order_by('-created_at').values('created_at')[:1]
++        ),
++    }
++
++
++def ago(when, now=None):
++    """'Today', 'Yesterday', '5 days ago', '3 weeks ago' ... or '' if never."""
++    if when is None:
++        return ''
++    now = now or timezone.now()
++    days = (timezone.localtime(now).date() - timezone.localtime(when).date()).days
++    if days <= 0:
++        return 'Today'
++    if days == 1:
++        return 'Yesterday'
++    if days < 14:
++        return f'{days} days ago'
++    if days < 60:
++        return f'{days // 7} weeks ago'
++    if days < 730:
++        return f'{days // 30} months ago'
++    return f'{days // 365} years ago'
++
++
++def recency(when, now=None):
++    """(key, label) describing how recently someone bought."""
++    if when is None:
++        return 'never', 'Never bought'
++    now = now or timezone.now()
++    age = (now - when).days
++    if age <= RECENT_DAYS:
++        return 'recent', 'Recent buyer'
++    if age <= LAPSED_DAYS:
++        return 'cooling', 'Cooling off'
++    return 'lapsed', 'Lapsed'
++
++
++def recency_q(key, field='last_purchase', now=None):
++    """Q object selecting one recency bucket on an annotated queryset."""
++    now = now or timezone.now()
++    recent_cut = now - timezone.timedelta(days=RECENT_DAYS)
++    lapsed_cut = now - timezone.timedelta(days=LAPSED_DAYS)
++    if key == 'recent':
++        return Q(**{f'{field}__gte': recent_cut})
++    if key == 'cooling':
++        return Q(**{f'{field}__lt': recent_cut, f'{field}__gte': lapsed_cut})
++    if key == 'lapsed':
++        return Q(**{f'{field}__lt': lapsed_cut})
++    if key == 'never':
++        return Q(**{f'{field}__isnull': True})
++    return None
++
++
++# --------------------------------------------------------------------------
++# Customer queryset + named filters
++# --------------------------------------------------------------------------
++def customer_queryset(now=None):
++    from apps.billing.models import Payment, Subscription
++    from apps.customers.models import Customer
++    from apps.mikrotik.models import InternetSession
++
++    now = now or timezone.now()
++    today = timezone.localdate()
++    money = DecimalField(max_digits=12, decimal_places=2)
++
++    paid = Payment.objects.filter(customer=OuterRef('pk'), status=Payment.Status.SUCCESS).order_by()
++    paid_up = Subscription.objects.filter(customer=OuterRef('pk'), status=Subscription.Status.ACTIVE).filter(
++        Q(expiry_time__gt=now) | Q(expiry_time__isnull=True)
++    )
++    return Customer.objects.annotate(
++        **purchase_annotations('pk'),
++        total_paid=Coalesce(
++            Subquery(paid.values('customer').annotate(t=Sum('amount')).values('t'), output_field=money),
++            Value(Decimal('0.00')), output_field=money,
++        ),
++        has_paid_package=Exists(paid_up),
++        is_online=Exists(InternetSession.objects.filter(customer=OuterRef('pk'), status=InternetSession.Status.ACTIVE)),
++        connected_today=Exists(InternetSession.objects.filter(customer=OuterRef('pk'), login_time__date=today)),
++    )
++
++
++# key -> (label, plain-English meaning, bootstrap icon, filter function)
++FILTERS = OrderedDict([
++    ('all', (
++        'All customers', 'Everyone in the system: anyone who has ever connected or bought a package.',
++        'bi-people-fill', lambda qs, now: qs)),
++    ('active_account', (
++        'Active customers',
++        'Accounts in good standing (not suspended, blocked or inactive). This is about the account only; '
++        'it does not mean they have internet time left.',
++        'bi-person-check-fill', lambda qs, now: qs.filter(status='ACTIVE'))),
++    ('subscribed', (
++        'Active users', 'Customers with a paid package that has not run out yet, so they can use the internet.',
++        'bi-wifi', lambda qs, now: qs.filter(has_paid_package=True))),
++    ('online', (
++        'Online now', 'Customers with a device connected to the hotspot at this moment.',
++        'bi-broadcast', lambda qs, now: qs.filter(is_online=True))),
++    ('connected_today', (
++        'Connected today', 'Customers who connected to the hotspot at least once today.',
++        'bi-box-arrow-in-right', lambda qs, now: qs.filter(connected_today=True))),
++    ('expired', (
++        'Expired customers', 'Customers whose last package has run out and who have not renewed.',
++        'bi-person-x-fill', lambda qs, now: qs.filter(package_expiry__lt=now))),
++    ('recent', (
++        f'Bought in last {RECENT_DAYS} days', 'Customers who bought or were given a package this week.',
++        'bi-bag-check-fill', lambda qs, now: qs.filter(recency_q('recent', now=now)))),
++    ('lapsed', (
++        f'Lapsed ({LAPSED_DAYS}+ days)', f'Customers who bought before but nothing in the last {LAPSED_DAYS} days. '
++        'Good people to reach out to.',
++        'bi-clock-history', lambda qs, now: qs.filter(recency_q('lapsed', now=now)))),
++    ('repeat', (
++        'Repeat customers', 'Customers who have bought two or more times.',
++        'bi-arrow-repeat', lambda qs, now: qs.filter(purchase_count__gte=2))),
++    ('never', (
++        'Never bought', 'Customers who registered or connected but never had a package.',
++        'bi-person-dash-fill', lambda qs, now: qs.filter(purchase_count=0))),
++])
++
++SORTS = OrderedDict([
++    ('recent', ('Bought most recently', [F('last_purchase').desc(nulls_last=True), '-registration_date'])),
++    ('lapsed', ('Longest since last purchase', [F('last_purchase').asc(nulls_last=True), '-registration_date'])),
++    ('most', ('Most purchases', ['-purchase_count', F('last_purchase').desc(nulls_last=True)])),
++    ('spend', ('Highest spenders', ['-total_paid', F('last_purchase').desc(nulls_last=True)])),
++    ('newest', ('Newest customers', ['-registration_date'])),
++])
++
++
++def customers(key='all', now=None):
++    now = now or timezone.now()
++    func = FILTERS.get(key, FILTERS['all'])[3]
++    return func(customer_queryset(now), now)
++
++
++def count(key, now=None):
++    return customers(key, now).count()
+diff --git a/apps/core/urls.py b/apps/core/urls.py
+index 61ab6b5..310b618 100644
+--- a/apps/core/urls.py
++++ b/apps/core/urls.py
+@@ -23,6 +23,7 @@ urlpatterns = [
+     path('account/', views.my_account, name='my_account'),
+     path('shareholders/activity/', views.shareholder_activity, name='shareholder_activity'),
+     path('payments/', views.payment_management, name='payments'),
++    path('customers/', views.customer_list, name='customer_list'),
+     path('subscriptions/', views.subscription_management, name='subscriptions'),
+     path('subscriptions/<int:subscription_id>/add-time/', views.add_subscription_time, name='add_subscription_time'),
+     path('subscriptions/time-adjustments/', views.time_adjustments_log, name='time_adjustments_log'),
+diff --git a/apps/core/views.py b/apps/core/views.py
+index 0bd4e33..efb9693 100644
+--- a/apps/core/views.py
++++ b/apps/core/views.py
+@@ -53,6 +53,14 @@ def _can_view_revenue_dashboard(user):
+     return user.is_authenticated and _staff_role_name(user) in ('SUPER_ADMIN', 'SHAREHOLDER')
+ 
+ 
++def _link(url_name, **params):
++    """reverse(url_name) plus a query string, skipping empty params."""
++    from urllib.parse import urlencode
++    url = reverse(url_name)
++    params = {k: v for k, v in params.items() if v not in (None, '')}
++    return f'{url}?{urlencode(params)}' if params else url
++
++
+ @login_required(login_url='core:admin_login')
+ def dashboard(request):
+     """
+@@ -63,6 +71,7 @@ def dashboard(request):
+     from datetime import timedelta
+     from apps.customers.models import Customer
+     from apps.billing.models import Payment, Subscription
++    from apps.core import customer_insights as insights
+     from apps.mikrotik.models import InternetSession
+ 
+     today = timezone.localdate()
+@@ -113,11 +122,13 @@ def dashboard(request):
+         'monthly_labels': monthly_labels,
+         'monthly_totals': monthly_totals,
+         'total_customers': Customer.objects.count(),
+-        'active_customers': Customer.objects.filter(status=Customer.Status.ACTIVE).count(),
+-        'expired_customers': Customer.objects.filter(
+-            package_expiry__lt=timezone.now()
+-        ).exclude(package_expiry__isnull=True).count(),
+-        'online_users': InternetSession.objects.filter(status='ACTIVE').count(),
++        'active_customers': insights.count('active_account'),
++        # Every customer tile uses customer_insights, the same code the
++        # Customers page uses for its list, so a tile's number always equals
++        # the number of rows you see after clicking it.
++        'expired_customers': insights.count('expired'),
++        'online_users': insights.count('online'),
++        'lapsed_customers': insights.count('lapsed'),
+         'todays_revenue': revenue_today,
+         'todays_payments': payments_today.count(),
+         'successful_payments': payments_today.filter(status=Payment.Status.SUCCESS).count(),
+@@ -125,11 +136,26 @@ def dashboard(request):
+             status__in=[Payment.Status.FAILED, Payment.Status.CANCELLED, Payment.Status.TIMEOUT]
+         ).count(),
+         'pending_payments': payments_today.filter(status=Payment.Status.PENDING).count(),
+-        'active_packages': Subscription.objects.filter(status=Subscription.Status.ACTIVE).count(),
++        'active_users': insights.count('subscribed'),
+         'todays_sessions': InternetSession.objects.filter(login_time__date=today).count(),
+         'chart_labels': [d.strftime('%d %b') for d in chart_days],
+         'chart_revenue': [float(revenue_by_day.get(d, 0)) for d in chart_days],
+         'chart_sessions': [sessions_by_day.get(d, 0) for d in chart_days],
++        'tile_links': {
++            'customers_all': _link('core:customer_list', filter='all'),
++            'customers_active': _link('core:customer_list', filter='active_account'),
++            'customers_subscribed': _link('core:customer_list', filter='subscribed'),
++            'customers_online': _link('core:customer_list', filter='online'),
++            'customers_expired': _link('core:customer_list', filter='expired'),
++            'customers_lapsed': _link('core:customer_list', filter='lapsed'),
++            'customers_today': _link('core:customer_list', filter='connected_today'),
++            'pay_revenue': _link('core:payments', status='SUCCESS', date_from=today.isoformat(), date_to=today.isoformat()),
++            'pay_all': _link('core:payments', date_from=today.isoformat(), date_to=today.isoformat()),
++            'pay_failed': _link('core:payments', status='FAILED,CANCELLED,TIMEOUT',
++                                date_from=today.isoformat(), date_to=today.isoformat()),
++            'pay_pending': _link('core:payments', status='PENDING',
++                                 date_from=today.isoformat(), date_to=today.isoformat()),
++        },
+     }
+     return render(request, 'core/dashboard.html', context)
+ 
+@@ -285,6 +311,13 @@ def revenue_dashboard(request):
+         'total_capital': total_capital,
+         'todays_revenue': todays_revenue,
+         'todays_payment_count': todays_payment_count,
++        'cycle_hint': f'Revenue so far this cycle. Day {period.day_number}, started {timezone.localtime(period.start_at):%d %b %Y}.',
++        'previous_tile_label': previous_period.label if previous_period else 'Previous Cycle',
++        'tile_links': {
++            'today': _link('core:payments', status='SUCCESS', date_from=today.isoformat(), date_to=today.isoformat()),
++            'cycle': _link('core:payments', status='SUCCESS', cycle='current'),
++            'previous': _link('core:payments', status='SUCCESS', cycle='previous') if previous_period else '',
++        },
+         'company_revenue': company_revenue,
+         'month_payment_count': month_payment_count,
+         'prev_month_revenue': prev_month_revenue,
+@@ -947,8 +980,22 @@ def payment_management(request):
+ 
+     qs = Payment.objects.select_related('customer', 'package').order_by('-created_at')
+     params = request.GET
+-    if params.get('status'):
+-        qs = qs.filter(status=params['status'])
++    statuses = [x for x in (params.get('status') or '').split(',') if x]
++    if statuses:
++        qs = qs.filter(status__in=statuses)
++    cycle = params.get('cycle')
++    cycle_label = ''
++    if cycle in ('current', 'previous'):
++        from apps.billing.models import EarningsPeriod
++        if cycle == 'current':
++            period = EarningsPeriod.current()
++            qs = qs.filter(created_at__gte=period.start_at)
++            cycle_label = f'{period.label} (current cycle)'
++        else:
++            period = EarningsPeriod.objects.filter(end_at__isnull=False).order_by('-start_at').first()
++            if period is not None:
++                qs = qs.filter(created_at__gte=period.start_at, created_at__lt=period.end_at)
++                cycle_label = f'{period.label} (previous cycle)'
+     if params.get('phone'):
+         qs = qs.filter(phone_number__icontains=params['phone'])
+     if params.get('date_from'):
+@@ -972,24 +1019,87 @@ def payment_management(request):
+         failed=Count('id', filter=Q(status__in=['FAILED', 'CANCELLED', 'TIMEOUT'])),
+         pending=Count('id', filter=Q(status='PENDING')),
+     )
+-    return render(request, 'core/payments.html', {'payments': qs[:200], 'totals': totals})
++    return render(request, 'core/payments.html', {
++        'payments': qs[:200], 'totals': totals,
++        'selected_status': ','.join(statuses),
++        'cycle_label': cycle_label,
++        'filters_active': bool(statuses or cycle_label or params.get('phone')
++                               or params.get('date_from') or params.get('date_to')),
++    })
+ 
+ 
+ @login_required(login_url='core:admin_login')
+ def subscription_management(request):
+-    """Section 22: full subscription/entitlement history, never overwritten."""
+-    from apps.billing.models import Subscription
++    """
++    Section 22: full subscription/entitlement history, never overwritten.
+ 
++    Search (name / phone / M-Pesa receipt), status, package and "customer's
++    last purchase" filters, plus sorting so you can see who bought most
++    recently or who has not bought for the longest. Each row shows how many
++    times that customer has purchased.
++    """
++    from django.core.paginator import Paginator
++    from django.db.models import F
++    from apps.billing.models import Subscription
++    from apps.core import customer_insights as insights
+     from apps.core import time_adjustments as ta
++    from apps.packages.models import InternetPackage
++
++    if _staff_role_name(request.user) is None:
++        return HttpResponse('Forbidden.', status=403)
++
++    params = request.GET
++    now = timezone.now()
++    qs = Subscription.objects.select_related('customer', 'package', 'payment').annotate(
++        **{('cust_' + k): v for k, v in insights.purchase_annotations('customer_id').items()}
++    )
+ 
+-    qs = Subscription.objects.select_related('customer', 'package').order_by('-created_at')
+-    status_param = request.GET.get('status')
+-    if status_param:
+-        qs = qs.filter(status=status_param)
++    q = (params.get('q') or '').strip()
++    if q:
++        qs = qs.filter(
++            Q(customer__full_name__icontains=q) | Q(customer__phone_number__icontains=q)
++            | Q(payment__mpesa_receipt_number__icontains=q) | Q(package__name__icontains=q)
++        )
++    status = params.get('status') or ''
++    if status in Subscription.Status.values:
++        qs = qs.filter(status=status)
++    package = params.get('package') or ''
++    if package.isdigit():
++        qs = qs.filter(package_id=int(package))
++    last = params.get('last') or ''
++    cond = insights.recency_q(last, field='cust_last_purchase', now=now) if last else None
++    if cond is not None:
++        qs = qs.filter(cond)
++
++    sort = params.get('sort') or 'newest'
++    ordering = {
++        'newest': ['-created_at'],
++        'oldest': ['created_at'],
++        'lapsed': [F('cust_last_purchase').asc(nulls_last=True), '-created_at'],
++        'most': ['-cust_purchase_count', '-created_at'],
++    }.get(sort) or ['-created_at']
++    qs = qs.order_by(*ordering)
++
++    page = Paginator(qs, 50).get_page(params.get('page'))
++    rows = list(page.object_list)
++    for sub in rows:
++        sub.last_ago = insights.ago(sub.cust_last_purchase, now)
++        sub.recency_key, sub.recency_label = insights.recency(sub.cust_last_purchase, now)
++
++    from urllib.parse import urlencode
++    keep = {k: v for k, v in {'q': q, 'status': status, 'package': package, 'last': last, 'sort': sort}.items()
++            if v and not (k == 'sort' and v == 'newest')}
+ 
+     is_main_admin = _is_main_admin(request.user)
+     return render(request, 'core/subscriptions.html', {
+-        'subscriptions': qs[:200],
++        'subscriptions': rows,
++        'page_obj': page,
++        'base_qs': urlencode(keep),
++        'q': q, 'sel_status': status, 'sel_package': package, 'sel_last': last, 'sel_sort': sort,
++        'status_choices': Subscription.Status.choices,
++        'packages': InternetPackage.objects.order_by('display_order', 'name'),
++        'filters_active': bool(keep),
++        'recent_days': insights.RECENT_DAYS, 'lapsed_days': insights.LAPSED_DAYS,
+         'is_main_admin': is_main_admin,
+         # Shareholders see their daily quota; the Main Admin has none.
+         'quota': None if is_main_admin else ta.allowance(request.user),
+@@ -997,6 +1107,70 @@ def subscription_management(request):
+         'max_minutes': ta.MAX_MINUTES_PER_ADJUSTMENT,
+     })
+ 
++
++@login_required(login_url='core:admin_login')
++def customer_list(request):
++    """
++    The lists behind the dashboard tiles. ``?filter=`` picks one of the named
++    groups in apps/core/customer_insights.py (online, active users, expired,
++    lapsed ...), ``?q=`` searches name / phone / email, ``?sort=`` orders by
++    purchase recency, number of purchases or spend.
++    """
++    from urllib.parse import urlencode
++    from django.core.paginator import Paginator
++    from django.db.models import Q
++    from apps.core import customer_insights as insights
++
++    if _staff_role_name(request.user) is None:
++        return HttpResponse('Forbidden.', status=403)
++
++    now = timezone.now()
++    key = request.GET.get('filter') or 'all'
++    if key not in insights.FILTERS:
++        key = 'all'
++    sort = request.GET.get('sort') or 'recent'
++    if sort not in insights.SORTS:
++        sort = 'recent'
++    q = (request.GET.get('q') or '').strip()
++
++    qs = insights.customers(key, now)
++    if q:
++        qs = qs.filter(
++            Q(full_name__icontains=q) | Q(phone_number__icontains=q)
++            | Q(email__icontains=q) | Q(username__icontains=q)
++        )
++    qs = qs.order_by(*insights.SORTS[sort][1])
++
++    page = Paginator(qs, 50).get_page(request.GET.get('page'))
++    rows = list(page.object_list)
++    for c in rows:
++        c.last_ago = insights.ago(c.last_purchase, now)
++        c.recency_key, c.recency_label = insights.recency(c.last_purchase, now)
++        c.expiry_ago = insights.ago(c.package_expiry, now) if c.package_expiry else ''
++        c.expiry_passed = bool(c.package_expiry and c.package_expiry < now)
++
++    def href(**over):
++        data = {'filter': key, 'sort': sort, 'q': q}
++        data.update(over)
++        data = {k: v for k, v in data.items() if v and not (k == 'sort' and v == 'recent') and not (k == 'filter' and v == 'all')}
++        return f"{reverse('core:customer_list')}{'?' + urlencode(data) if data else ''}"
++
++    chips = [{
++        'key': k, 'label': meta[0], 'icon': meta[2], 'active': k == key,
++        'count': insights.count(k, now), 'href': href(filter=k, page=''),
++    } for k, meta in insights.FILTERS.items()]
++
++    return render(request, 'core/customers.html', {
++        'customers': rows, 'page_obj': page, 'chips': chips,
++        'current': {'key': key, 'label': insights.FILTERS[key][0], 'meaning': insights.FILTERS[key][1],
++                    'icon': insights.FILTERS[key][2]},
++        'q': q, 'sort': sort, 'sorts': [(k, v[0]) for k, v in insights.SORTS.items()],
++        'base_qs': urlencode({k: v for k, v in {'filter': key, 'sort': sort, 'q': q}.items() if v}),
++        'total_found': page.paginator.count,
++        'recent_days': insights.RECENT_DAYS, 'lapsed_days': insights.LAPSED_DAYS,
++    })
++
++
+ @login_required(login_url='core:admin_login')
+ def voucher_management(request):
+     """
+diff --git a/static/css/theme.css b/static/css/theme.css
+index 976639e..9bcd0a7 100644
+--- a/static/css/theme.css
++++ b/static/css/theme.css
+@@ -418,25 +418,3 @@ th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--co
+   background: transparent;
+ }
+ 
+-/* Button spinner: shown while a form is being processed so the user can see
+-   the request is in flight and can't submit it again. */
+-.btn:disabled { opacity: .7; cursor: not-allowed; transform: none; }
+-.btn-spinner {
+-  display: none; width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px;
+-  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+-  animation: btn-spin .7s linear infinite;
+-}
+-.btn.is-loading .btn-spinner { display: inline-block; }
+-@keyframes btn-spin { to { transform: rotate(360deg); } }
+-.quota-count { font-weight: 700; }
+-.quota-count.quota-empty { color: var(--status-danger); }
+-
+-/* Dashboard chart pairs: two columns on wide screens (unchanged), but the
+-   columns may shrink below the canvas' natural width, and they stack on
+-   small screens instead of overflowing the page. */
+-.chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+-.chart-grid > .card { min-width: 0; overflow: hidden; }
+-.chart-grid canvas { max-width: 100%; }
+-@media (max-width: 860px) {
+-  .grid.chart-grid { grid-template-columns: minmax(0, 1fr); }
+-}
+diff --git a/templates/core/_pager.html b/templates/core/_pager.html
+new file mode 100644
+index 0000000..215f534
+--- /dev/null
++++ b/templates/core/_pager.html
+@@ -0,0 +1,7 @@
++{% if page_obj.paginator.num_pages > 1 %}
++<div class="pager">
++  {% if page_obj.has_previous %}<a class="btn btn-secondary" href="?{{ base_qs }}{% if base_qs %}&amp;{% endif %}page={{ page_obj.previous_page_number }}"><i class="bi bi-chevron-left"></i> Previous</a>{% else %}<span></span>{% endif %}
++  <span class="pager-info">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
++  {% if page_obj.has_next %}<a class="btn btn-secondary" href="?{{ base_qs }}{% if base_qs %}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next <i class="bi bi-chevron-right"></i></a>{% else %}<span></span>{% endif %}
++</div>
++{% endif %}
+diff --git a/templates/core/_stat_tile.html b/templates/core/_stat_tile.html
+new file mode 100644
+index 0000000..94c69fe
+--- /dev/null
++++ b/templates/core/_stat_tile.html
+@@ -0,0 +1,13 @@
++{% comment %}
++Dashboard tile. Params: icon (Bootstrap Icons class), tone (blue/green/amber/red/teal/purple),
++label, value, prefix (optional, e.g. currency), hint (plain-English meaning), href (optional;
++without it the tile is not clickable).
++{% endcomment %}
++{% if href %}<a class="stat-tile" href="{{ href }}" title="{{ hint }}">{% else %}<div class="stat-tile" title="{{ hint }}">{% endif %}
++  <span class="stat-icon tone-{{ tone }}"><i class="bi {{ icon }}" aria-hidden="true"></i></span>
++  <span class="stat-body">
++    <span class="stat-label">{{ label }}</span>
++    <span class="stat-value">{% if prefix %}<small>{{ prefix }}</small> {% endif %}{{ value }}</span>
++    <span class="stat-hint">{{ hint }}</span>
++  </span>
++  {% if href %}<i class="bi bi-chevron-right stat-go" aria-hidden="true"></i></a>{% else %}</div>{% endif %}
+diff --git a/templates/core/admin_base.html b/templates/core/admin_base.html
+index 6b4bd7c..dbef663 100644
+--- a/templates/core/admin_base.html
++++ b/templates/core/admin_base.html
+@@ -17,6 +17,7 @@
+       <a href="{% url 'core:shareholder_activity' %}" class="{% if request.resolver_match.url_name == 'shareholder_activity' %}active{% endif %}">Shareholder Activity</a>
+       {% endif %}
+       <a href="{% url 'core:payments' %}" class="{% if request.resolver_match.url_name == 'payments' %}active{% endif %}">Payments</a>
++      <a href="{% url 'core:customer_list' %}" class="{% if request.resolver_match.url_name == 'customer_list' %}active{% endif %}">Customers</a>
+       <a href="{% url 'core:subscriptions' %}" class="{% if request.resolver_match.url_name == 'subscriptions' %}active{% endif %}">Subscriptions</a>
+       <a href="{% url 'core:time_adjustments_log' %}" class="{% if request.resolver_match.url_name == 'time_adjustments_log' %}active{% endif %}">Time Adjustments Log</a>
+       <a href="{% url 'core:vouchers' %}" class="{% if request.resolver_match.url_name == 'vouchers' %}active{% endif %}">Vouchers</a>
+@@ -120,6 +121,99 @@
+   .admin-content .grid { gap: 10px; padding: 0 0 14px; }
+   .admin-content table { display: block; overflow-x: auto; white-space: nowrap; max-width: 100%; -webkit-overflow-scrolling: touch; }
+ 
++
++  /* ---- Added styles. Kept inline on purpose so they work even when the
++     collected/hashed static CSS is stale. ---- */
++  .tile-section { margin: 18px 2px 8px; font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-muted); }
++  .tile-section span { text-transform: none; letter-spacing: 0; opacity: .8; }
++  .tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 10px; }
++  .stat-tile {
++    position: relative; display: flex; align-items: center; gap: 12px; padding: 14px; min-width: 0;
++    background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px;
++    color: inherit; text-decoration: none; transition: border-color .15s ease, transform .15s ease;
++  }
++  a.stat-tile:hover { border-color: var(--color-primary); transform: translateY(-1px); }
++  a.stat-tile:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
++  .stat-icon {
++    position: relative; flex: 0 0 42px; width: 42px; height: 42px; border-radius: 50%;
++    display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--tone, var(--color-primary));
++  }
++  .stat-icon::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--tone, var(--color-primary)); opacity: .16; }
++  .stat-icon i { position: relative; }
++  .tone-blue { --tone: var(--status-info, #3b82f6); }
++  .tone-green { --tone: var(--status-success, #22c55e); }
++  .tone-amber { --tone: var(--status-warning, #f59e0b); }
++  .tone-red { --tone: var(--status-danger, #ef4444); }
++  .tone-teal { --tone: var(--color-primary); }
++  .tone-purple { --tone: #8b5cf6; }
++  .stat-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
++  .stat-label { font-size: .78rem; color: var(--color-text-muted); font-weight: 600; }
++  .stat-value { font-size: 1.5rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
++  .stat-value small { font-size: .8rem; font-weight: 600; color: var(--color-text-muted); }
++  .stat-hint { font-size: .72rem; color: var(--color-text-muted); line-height: 1.3; margin-top: 2px; }
++  .stat-go { color: var(--color-text-muted); font-size: .9rem; }
++
++  /* Charts: two columns on large screens, stacked (revenue first, devices
++     below it) on small screens. min-width:0 lets the columns shrink so a
++     chart can never push the page sideways. */
++  .admin-content .grid.chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: none; margin: 0; padding: 0 0 14px; }
++  .chart-grid > .card { min-width: 0; overflow: hidden; }
++  .chart-box { position: relative; width: 100%; height: 240px; }
++  .chart-box canvas { max-width: 100%; }
++  @media (max-width: 900px) {
++    .admin-content .grid.chart-grid { grid-template-columns: minmax(0, 1fr); }
++  }
++  @media (max-width: 640px) {
++    .tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++    .stat-tile { padding: 10px; gap: 8px; }
++    .stat-icon { flex-basis: 34px; width: 34px; height: 34px; font-size: 1rem; }
++    .stat-value { font-size: 1.2rem; }
++    .stat-hint, .stat-go { display: none; }
++    .chart-box { height: 220px; }
++  }
++
++  /* Filter bars, chips, pills, pager (Customers / Subscriptions / Payments) */
++  .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
++  .filter-bar select, .filter-bar input, .filter-bar .btn { margin: 0; width: auto; padding: 8px 10px; font-size: .85rem; }
++  .search-box { position: relative; flex: 1 1 240px; min-width: 200px; }
++  .search-box i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--color-text-muted); pointer-events: none; }
++  .filter-bar .search-box input { width: 100%; padding-left: 32px; }
++  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
++  .chip {
++    display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: .8rem; white-space: nowrap;
++    border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); text-decoration: none;
++  }
++  .chip:hover { border-color: var(--color-primary); }
++  .chip.active { background: var(--color-primary); color: #1c2410; border-color: var(--color-primary); font-weight: 700; }
++  .chip-count { font-weight: 700; opacity: .75; }
++  @media (max-width: 640px) { .chip-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; } }
++  .list-head { display: flex; gap: 12px; align-items: center; }
++  .list-count { font-size: .85rem; font-weight: 600; color: var(--color-text-muted); margin-left: 6px; }
++  .list-meaning { color: var(--color-text-muted); font-size: .8rem; margin: 2px 0 0; }
++  .cust-name { font-weight: 600; color: inherit; text-decoration: none; }
++  .cust-name:hover { text-decoration: underline; }
++  .cust-sub { color: var(--color-text-muted); font-size: .75rem; }
++  .online-dot { color: var(--status-success); font-weight: 600; }
++  .online-dot i { font-size: .5rem; vertical-align: middle; }
++  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .68rem; font-weight: 700; border: 1px solid currentColor; white-space: nowrap; }
++  .pill-recent { color: var(--status-success); }
++  .pill-cooling { color: var(--status-warning); }
++  .pill-lapsed { color: var(--status-danger); }
++  .pill-never { color: var(--color-text-muted); }
++  .pager { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; }
++  .pager-info { font-size: .8rem; color: var(--color-text-muted); }
++
++  /* Spinner on buttons while a form is being processed */
++  .btn:disabled { opacity: .7; cursor: not-allowed; transform: none; }
++  .btn-spinner {
++    display: none; width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px;
++    border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: btn-spin .7s linear infinite;
++  }
++  .btn.is-loading .btn-spinner { display: inline-block; }
++  @keyframes btn-spin { to { transform: rotate(360deg); } }
++  .quota-count { font-weight: 700; }
++  .quota-count.quota-empty { color: var(--status-danger); }
++
+   @media (max-width: 860px) {
+     .admin-sidebar { transform: translateX(-100%); }
+     .admin-sidebar.open { transform: translateX(0); }
+diff --git a/templates/core/customers.html b/templates/core/customers.html
+new file mode 100644
+index 0000000..6da8fe3
+--- /dev/null
++++ b/templates/core/customers.html
+@@ -0,0 +1,72 @@
++{% extends "core/admin_base.html" %}
++{% block title %}Customers &middot; {{ branding.business_name }}{% endblock %}
++{% block admin_title %}Customers{% endblock %}
++{% block admin_content %}
++
++<div class="chip-row" role="tablist" aria-label="Customer groups">
++  {% for c in chips %}
++  <a class="chip {% if c.active %}active{% endif %}" href="{{ c.href }}"><i class="bi {{ c.icon }}" aria-hidden="true"></i> {{ c.label }} <span class="chip-count">{{ c.count }}</span></a>
++  {% endfor %}
++</div>
++
++<div class="card" style="margin-top:12px;">
++  <div class="list-head">
++    <span class="stat-icon tone-teal"><i class="bi {{ current.icon }}" aria-hidden="true"></i></span>
++    <div>
++      <h3 style="margin:0;">{{ current.label }} <span class="list-count">{{ total_found }}</span></h3>
++      <p class="list-meaning">{{ current.meaning }}</p>
++    </div>
++  </div>
++
++  <form method="get" class="filter-bar">
++    <input type="hidden" name="filter" value="{{ current.key }}">
++    <div class="search-box"><i class="bi bi-search" aria-hidden="true"></i>
++      <input type="search" name="q" value="{{ q }}" placeholder="Search name, phone or email"></div>
++    <select name="sort" onchange="this.form.submit()" aria-label="Sort by">
++      {% for key, label in sorts %}<option value="{{ key }}" {% if key == sort %}selected{% endif %}>{{ label }}</option>{% endfor %}
++    </select>
++    <button class="btn" type="submit">Search</button>
++    {% if q %}<a class="btn btn-secondary" href="?filter={{ current.key }}&amp;sort={{ sort }}">Clear</a>{% endif %}
++  </form>
++
++  <table style="width:100%;">
++    <thead>
++      <tr><th style="text-align:left;">Customer</th><th>Account</th><th>Package</th><th>Purchases</th><th>Total spent</th><th>Last purchase</th></tr>
++    </thead>
++    <tbody>
++      {% for c in customers %}
++      <tr>
++        <td data-label="Customer">
++          <a class="cust-name" href="{% url 'core:subscriptions' %}?q={{ c.phone_number|urlencode }}" title="See this customer's subscriptions">{{ c.full_name }}</a>
++          <div class="cust-sub">{{ c.phone_number }}{% if c.is_online %} &middot; <span class="online-dot"><i class="bi bi-circle-fill" aria-hidden="true"></i> Online</span>{% endif %}</div>
++        </td>
++        <td data-label="Account"><span class="badge {% if c.status == 'ACTIVE' %}badge-success{% elif c.status == 'INACTIVE' %}badge-warning{% else %}badge-danger{% endif %}">{{ c.get_status_display }}</span></td>
++        <td data-label="Package">
++          {% if c.has_paid_package %}
++            <span class="badge badge-success">Active</span>
++            <div class="cust-sub">until {{ c.package_expiry|date:"d M, H:i" }}</div>
++          {% elif c.package_expiry %}
++            <span class="badge badge-danger">Expired</span>
++            <div class="cust-sub">{{ c.expiry_ago }}</div>
++          {% else %}<span class="cust-sub">&mdash;</span>{% endif %}
++        </td>
++        <td data-label="Purchases"><i class="bi bi-bag" aria-hidden="true"></i> <strong>{{ c.purchase_count }}</strong></td>
++        <td data-label="Total spent">{{ branding.currency }} {{ c.total_paid|floatformat:"0" }}</td>
++        <td data-label="Last purchase">
++          {% if c.last_purchase %}{{ c.last_ago }}<div class="cust-sub">{{ c.last_purchase|date:"d M Y" }}</div>{% endif %}
++          <span class="pill pill-{{ c.recency_key }}">{{ c.recency_label }}</span>
++        </td>
++      </tr>
++      {% empty %}
++      <tr><td colspan="6">No customers in this group{% if q %} match &ldquo;{{ q }}&rdquo;{% endif %}.</td></tr>
++      {% endfor %}
++    </tbody>
++  </table>
++  {% include "core/_pager.html" %}
++  <p class="list-meaning" style="margin-bottom:0;">
++    <strong>Recent buyer</strong> = bought in the last {{ recent_days }} days &middot;
++    <strong>Cooling off</strong> = {{ recent_days }}&ndash;{{ lapsed_days }} days &middot;
++    <strong>Lapsed</strong> = more than {{ lapsed_days }} days. Purchases count every package given (M-Pesa, voucher or staff-added).
++  </p>
++</div>
++{% endblock %}
+diff --git a/templates/core/dashboard.html b/templates/core/dashboard.html
+index 8838878..0642bc0 100644
+--- a/templates/core/dashboard.html
++++ b/templates/core/dashboard.html
+@@ -6,34 +6,41 @@
+   <h2 style="margin:0; font-family:'Tangerine',cursive; font-size:2rem; font-weight:400;">{{ greeting }}, {{ display_name }} 👋</h2>
+ </div>
+ 
+-<div class="grid">
+-  <div class="card"><h3>Total Customers</h3><p class="price">{{ total_customers }}</p></div>
+-  <div class="card"><h3>Active Customers</h3><p class="price">{{ active_customers }}</p></div>
+-  <div class="card"><h3>Active Users</h3><p class="price">{{ active_packages }}</p></div>
+-  <div class="card"><h3>Online Users</h3><p class="price">{{ online_users }}</p></div>
+-  <div class="card"><h3>Today's Revenue</h3><p class="price">{{ branding.currency }} {{ todays_revenue }}</p></div>
+-  <div class="card"><h3>Today's Payments</h3><p class="price">{{ todays_payments }}</p></div>
+-  <div class="card"><h3>Successful Payments</h3><p class="price">{{ successful_payments }}</p></div>
+-  <div class="card"><h3>Failed Payments</h3><p class="price">{{ failed_payments }}</p></div>
+-  <div class="card"><h3>Pending Payments</h3><p class="price">{{ pending_payments }}</p></div>
+-  
+-  <div class="card"><h3>Expired Customers</h3><p class="price">{{ expired_customers }}</p></div>
+-  <div class="card"><h3>Today's Sessions</h3><p class="price">{{ todays_sessions }}</p></div>
++<h4 class="tile-section">Customers <span>&middot; click a tile to see the people behind the number</span></h4>
++<div class="tile-grid">
++  {% include "core/_stat_tile.html" with icon="bi-people-fill" tone="blue" label="Total Customers" value=total_customers href=tile_links.customers_all hint="Everyone who has ever connected or bought a package." %}
++  {% include "core/_stat_tile.html" with icon="bi-person-check-fill" tone="teal" label="Active Customers" value=active_customers href=tile_links.customers_active hint="Accounts in good standing (not suspended or blocked). Not the same as having internet time left." %}
++  {% include "core/_stat_tile.html" with icon="bi-wifi" tone="green" label="Active Users" value=active_users href=tile_links.customers_subscribed hint="Customers with a paid package that has not run out yet." %}
++  {% include "core/_stat_tile.html" with icon="bi-broadcast" tone="purple" label="Online Users" value=online_users href=tile_links.customers_online hint="Customers with a device connected to the hotspot right now." %}
++  {% include "core/_stat_tile.html" with icon="bi-person-x-fill" tone="red" label="Expired Customers" value=expired_customers href=tile_links.customers_expired hint="Customers whose package ran out and who have not renewed." %}
++  {% include "core/_stat_tile.html" with icon="bi-clock-history" tone="amber" label="Lapsed Customers" value=lapsed_customers href=tile_links.customers_lapsed hint="Bought before, but nothing in the last 30 days." %}
+ </div>
++
++<h4 class="tile-section">Today <span>&middot; payments and connections since midnight</span></h4>
++<div class="tile-grid">
++  {% include "core/_stat_tile.html" with icon="bi-cash-coin" tone="green" label="Today's Revenue" prefix=branding.currency value=todays_revenue href=tile_links.pay_revenue hint="Money received today from successful payments." %}
++  {% include "core/_stat_tile.html" with icon="bi-receipt" tone="blue" label="Today's Payments" value=todays_payments href=tile_links.pay_all hint="Every payment attempt today, whatever the outcome." %}
++  {% include "core/_stat_tile.html" with icon="bi-check-circle-fill" tone="green" label="Successful Payments" value=successful_payments href=tile_links.pay_revenue hint="Payments confirmed by M-Pesa today." %}
++  {% include "core/_stat_tile.html" with icon="bi-x-circle-fill" tone="red" label="Failed Payments" value=failed_payments href=tile_links.pay_failed hint="Failed, cancelled or timed-out payments today." %}
++  {% include "core/_stat_tile.html" with icon="bi-hourglass-split" tone="amber" label="Pending Payments" value=pending_payments href=tile_links.pay_pending hint="Payments started today that M-Pesa has not confirmed yet." %}
++  {% include "core/_stat_tile.html" with icon="bi-box-arrow-in-right" tone="teal" label="Today's Sessions" value=todays_sessions href=tile_links.customers_today hint="Hotspot connections started today. The list shows the customers behind them." %}
++</div>
++
++<h4 class="tile-section">Trends</h4>
+ <div class="grid chart-grid">
+   <div class="card">
+     <h3>Revenue last 14 days</h3>
+-    <canvas id="revenueChart" height="220"></canvas>
++    <div class="chart-box"><canvas id="revenueChart"></canvas></div>
+   </div>
+   <div class="card">
+-    <h3>Connections last 14 days</h3>
+-    <canvas id="sessionsChart" height="220"></canvas>
++    <h3>Devices connected, last 14 days</h3>
++    <div class="chart-box"><canvas id="sessionsChart"></canvas></div>
+   </div>
+ </div>
+ 
+ <div class="card" style="margin-top:12px;">
+   <h3>Monthly revenue</h3>
+-  <canvas id="monthlyChart" height="180"></canvas>
++  <div class="chart-box"><canvas id="monthlyChart"></canvas></div>
+ </div>
+ 
+ {{ chart_labels|json_script:"chart-labels" }}
+@@ -66,6 +73,7 @@
+       }],
+     },
+     options: {
++      responsive: true, maintainAspectRatio: false,
+       scales: {
+         x: { ticks: { color: textColor }, grid: { color: gridColor } },
+         y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+@@ -85,6 +93,7 @@
+       }],
+     },
+     options: {
++      responsive: true, maintainAspectRatio: false,
+       scales: {
+         x: { ticks: { color: textColor }, grid: { color: gridColor } },
+         y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+@@ -106,6 +115,7 @@
+       }],
+     },
+     options: {
++      responsive: true, maintainAspectRatio: false,
+       scales: {
+         x: { ticks: { color: textColor }, grid: { color: gridColor } },
+         y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+diff --git a/templates/core/payments.html b/templates/core/payments.html
+index d066690..6f498b3 100644
+--- a/templates/core/payments.html
++++ b/templates/core/payments.html
+@@ -15,18 +15,22 @@
+     <input type="text" name="phone" placeholder="Phone" value="{{ request.GET.phone }}" style="width:auto;">
+     <select name="status" style="width:auto;">
+       <option value="">All statuses</option>
+-      <option value="PENDING">Pending</option>
+-      <option value="SUCCESS">Success</option>
+-      <option value="FAILED">Failed</option>
+-      <option value="CANCELLED">Cancelled</option>
+-      <option value="TIMEOUT">Timeout</option>
+-      <option value="REFUNDED">Refunded</option>
++      <option value="PENDING" {% if selected_status == 'PENDING' %}selected{% endif %}>Pending</option>
++      <option value="SUCCESS" {% if selected_status == 'SUCCESS' %}selected{% endif %}>Success</option>
++      <option value="FAILED,CANCELLED,TIMEOUT" {% if selected_status == 'FAILED,CANCELLED,TIMEOUT' %}selected{% endif %}>All failed (failed, cancelled, timeout)</option>
++      <option value="FAILED" {% if selected_status == 'FAILED' %}selected{% endif %}>Failed</option>
++      <option value="CANCELLED" {% if selected_status == 'CANCELLED' %}selected{% endif %}>Cancelled</option>
++      <option value="TIMEOUT" {% if selected_status == 'TIMEOUT' %}selected{% endif %}>Timeout</option>
++      <option value="REFUNDED" {% if selected_status == 'REFUNDED' %}selected{% endif %}>Refunded</option>
+     </select>
++    {% if request.GET.cycle %}<input type="hidden" name="cycle" value="{{ request.GET.cycle }}">{% endif %}
+     <input type="date" name="date_from" value="{{ request.GET.date_from }}" style="width:auto;">
+     <input type="date" name="date_to" value="{{ request.GET.date_to }}" style="width:auto;">
+     <button class="btn" type="submit">Filter</button>
+     <button class="btn btn-secondary" type="submit" name="export" value="csv">Export CSV</button>
++    {% if filters_active %}<a class="btn btn-secondary" href="{% url 'core:payments' %}">Clear filters</a>{% endif %}
+   </form>
++  {% if cycle_label %}<p class="list-meaning" style="margin:-8px 0 12px;"><i class="bi bi-calendar-range"></i> Showing payments from <strong>{{ cycle_label }}</strong>.</p>{% endif %}
+   <div class="card">
+     <table>
+       <thead><tr><th>Customer</th><th>Phone</th><th>Amount</th><th>Package</th><th>Status</th><th>Receipt</th><th>Date</th></tr></thead>
+diff --git a/templates/core/revenue_dashboard.html b/templates/core/revenue_dashboard.html
+index 384ac51..d810724 100644
+--- a/templates/core/revenue_dashboard.html
++++ b/templates/core/revenue_dashboard.html
+@@ -7,18 +7,21 @@
+   <h2 style="margin:0; font-family:'Tangerine',cursive; font-size:2rem; font-weight:400;">{{ greeting }}, {{ display_name }} 👋</h2>
+ </div>
+ 
+-<div class="grid">
+-  <div class="card"><h3>Today's Revenue</h3><p class="price">{{ branding.currency }} {{ todays_revenue }}</p></div>
+-  <div class="card"><h3>Today's Successful Payments</h3><p class="price">{{ todays_payment_count }}</p></div>
+-  <div class="card"><h3>{{ current_month_label }}</h3><p class="price">{{ branding.currency }} {{ company_revenue }}</p><p style="color:var(--color-text-muted); font-size:.8rem; margin:2px 0 0;">Day {{ period_day }} &middot; started {{ period.start_date|date:"d M Y" }}</p></div>
+-  <div class="card"><h3>{{ current_month_label }} &middot; Payments</h3><p class="price">{{ month_payment_count }}</p></div>
+-  <div class="card">
+-    <h3>Growth vs Previous Cycle</h3>
+-    <p class="price" style="{% if growth_pct < 0 %}color:#f85149{% else %}color:#3fb950{% endif %}">
+-      {% if growth_pct > 0 %}+{% endif %}{{ growth_pct }}%
+-    </p>
++<h4 class="tile-section">Revenue <span>&middot; click a tile to see the payments behind it</span></h4>
++<div class="tile-grid">
++  {% include "core/_stat_tile.html" with icon="bi-cash-coin" tone="green" label="Today's Revenue" prefix=branding.currency value=todays_revenue href=tile_links.today hint="Money received today from successful payments." %}
++  {% include "core/_stat_tile.html" with icon="bi-receipt-cutoff" tone="blue" label="Today's Successful Payments" value=todays_payment_count href=tile_links.today hint="Number of confirmed payments today." %}
++  {% include "core/_stat_tile.html" with icon="bi-calendar-range-fill" tone="teal" label=current_month_label prefix=branding.currency value=company_revenue href=tile_links.cycle hint=cycle_hint %}
++  {% include "core/_stat_tile.html" with icon="bi-credit-card-2-front-fill" tone="purple" label="This cycle's payments" value=month_payment_count href=tile_links.cycle hint="Number of confirmed payments since this cycle started." %}
++  <div class="stat-tile" title="Revenue this cycle compared with the previous cycle.">
++    <span class="stat-icon {% if growth_pct < 0 %}tone-red{% else %}tone-green{% endif %}"><i class="bi {% if growth_pct < 0 %}bi-graph-down-arrow{% else %}bi-graph-up-arrow{% endif %}" aria-hidden="true"></i></span>
++    <span class="stat-body">
++      <span class="stat-label">Growth vs Previous Cycle</span>
++      <span class="stat-value">{% if growth_pct > 0 %}+{% endif %}{{ growth_pct }}%</span>
++      <span class="stat-hint">This cycle compared with the previous one.</span>
++    </span>
+   </div>
+-  <div class="card"><h3>{% if previous_period_label %}{{ previous_period_label }}{% else %}Previous Cycle{% endif %}</h3><p class="price">{{ branding.currency }} {{ prev_month_revenue }}</p></div>
++  {% include "core/_stat_tile.html" with icon="bi-clock-history" tone="amber" label=previous_tile_label prefix=branding.currency value=prev_month_revenue href=tile_links.previous hint="Total revenue of the last closed cycle." %}
+ </div>
+ 
+ <div class="grid" style="grid-template-columns: 1fr; margin-top:4px;">
+@@ -384,14 +387,15 @@
+   {% endif %}
+ </div>
+ 
+-<div class="grid chart-grid" style="margin-top:12px;">
++<h4 class="tile-section">Trends</h4>
++<div class="grid chart-grid">
+   <div class="card">
+     <h3>Daily Revenue:{{ current_month_label }}</h3>
+-    <canvas id="dailyRevenueChart" height="220"></canvas>
++    <div class="chart-box"><canvas id="dailyRevenueChart"></canvas></div>
+   </div>
+   <div class="card">
+     <h3>Historical Monthly Revenue</h3>
+-    <canvas id="historicalRevenueChart" height="220"></canvas>
++    <div class="chart-box"><canvas id="historicalRevenueChart"></canvas></div>
+   </div>
+ </div>
+ 
+@@ -422,6 +426,7 @@
+       }],
+     },
+     options: {
++      responsive: true, maintainAspectRatio: false,
+       scales: {
+         x: { ticks: { color: textColor }, grid: { color: gridColor } },
+         y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+@@ -443,6 +448,7 @@
+       }],
+     },
+     options: {
++      responsive: true, maintainAspectRatio: false,
+       scales: {
+         x: { ticks: { color: textColor }, grid: { color: gridColor } },
+         y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
+diff --git a/templates/core/subscriptions.html b/templates/core/subscriptions.html
+index 2cf33fe..e5f107b 100644
+--- a/templates/core/subscriptions.html
++++ b/templates/core/subscriptions.html
+@@ -34,13 +34,46 @@
+   </div>
+   {% endif %}
+ 
++  <form method="get" class="filter-bar" style="margin-bottom:12px;">
++    <div class="search-box"><i class="bi bi-search" aria-hidden="true"></i>
++      <input type="search" name="q" value="{{ q }}" placeholder="Search name, phone, M-Pesa receipt or package"></div>
++    <select name="status" onchange="this.form.submit()" aria-label="Status">
++      <option value="">All statuses</option>
++      {% for value, label in status_choices %}<option value="{{ value }}" {% if value == sel_status %}selected{% endif %}>{{ label }}</option>{% endfor %}
++    </select>
++    <select name="package" onchange="this.form.submit()" aria-label="Package">
++      <option value="">All packages</option>
++      {% for p in packages %}<option value="{{ p.id }}" {% if p.id|stringformat:"s" == sel_package %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
++    </select>
++    <select name="last" onchange="this.form.submit()" aria-label="Customer's last purchase">
++      <option value="">Any last purchase</option>
++      <option value="recent" {% if sel_last == 'recent' %}selected{% endif %}>Bought in last {{ recent_days }} days</option>
++      <option value="cooling" {% if sel_last == 'cooling' %}selected{% endif %}>{{ recent_days }}&ndash;{{ lapsed_days }} days ago</option>
++      <option value="lapsed" {% if sel_last == 'lapsed' %}selected{% endif %}>Over {{ lapsed_days }} days ago</option>
++    </select>
++    <select name="sort" onchange="this.form.submit()" aria-label="Sort by">
++      <option value="newest" {% if sel_sort == 'newest' %}selected{% endif %}>Newest purchase first</option>
++      <option value="oldest" {% if sel_sort == 'oldest' %}selected{% endif %}>Oldest purchase first</option>
++      <option value="lapsed" {% if sel_sort == 'lapsed' %}selected{% endif %}>Longest since customer last bought</option>
++      <option value="most" {% if sel_sort == 'most' %}selected{% endif %}>Most purchases</option>
++    </select>
++    <button class="btn" type="submit">Search</button>
++    {% if filters_active %}<a class="btn btn-secondary" href="{% url 'core:subscriptions' %}">Clear</a>{% endif %}
++  </form>
++  <p class="list-meaning" style="margin:0 0 8px;">{{ page_obj.paginator.count }} subscription{{ page_obj.paginator.count|pluralize }}</p>
++
+   <div class="card">
+     <table>
+       <thead><tr><th>Customer</th><th>Package</th><th>Receipt</th><th>Status</th><th>Source</th><th>Activated</th><th>Expires</th><th>Add time</th></tr></thead>
+       <tbody>
+         {% for s in subscriptions %}
+         <tr>
+-          <td data-label="Customer">{{ s.customer.full_name }}</td>
++          <td data-label="Customer">
++            {{ s.customer.full_name }}
++            <div class="cust-sub">{{ s.customer.phone_number }}</div>
++            <div class="cust-sub"><i class="bi bi-bag" aria-hidden="true"></i> {{ s.cust_purchase_count }} purchase{{ s.cust_purchase_count|pluralize }}{% if s.last_ago %} &middot; last bought {{ s.last_ago|lower }}{% endif %}
++              <span class="pill pill-{{ s.recency_key }}">{{ s.recency_label }}</span></div>
++          </td>
+           <td data-label="Package">{{ s.package.name }}</td>
+           <td data-label="Receipt">{{ s.payment.mpesa_receipt_number|default:" " }}</td>
+           <td data-label="Status"><span class="badge {% if s.status == 'ACTIVE' %}badge-success{% elif s.status == 'PENDING' %}badge-warning{% else %}badge-danger{% endif %}">{{ s.status }}</span></td>
+@@ -88,6 +121,7 @@
+         {% endfor %}
+       </tbody>
+     </table>
++    {% include "core/_pager.html" %}
+   </div>
+ </div>
+ 
+-- 
+2.43.0

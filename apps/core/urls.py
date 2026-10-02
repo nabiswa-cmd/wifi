@@ -23,6 +23,7 @@ urlpatterns = [
     path('account/', views.my_account, name='my_account'),
     path('shareholders/activity/', views.shareholder_activity, name='shareholder_activity'),
     path('payments/', views.payment_management, name='payments'),
+    path('customers/', views.customer_list, name='customer_list'),
     path('subscriptions/', views.subscription_management, name='subscriptions'),
     path('subscriptions/<int:subscription_id>/add-time/', views.add_subscription_time, name='add_subscription_time'),
     path('subscriptions/time-adjustments/', views.time_adjustments_log, name='time_adjustments_log'),

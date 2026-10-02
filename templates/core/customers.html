@@ -1,0 +1,72 @@
+{% extends "core/admin_base.html" %}
+{% block title %}Customers &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}Customers{% endblock %}
+{% block admin_content %}
+
+<div class="chip-row" role="tablist" aria-label="Customer groups">
+  {% for c in chips %}
+  <a class="chip {% if c.active %}active{% endif %}" href="{{ c.href }}"><i class="bi {{ c.icon }}" aria-hidden="true"></i> {{ c.label }} <span class="chip-count">{{ c.count }}</span></a>
+  {% endfor %}
+</div>
+
+<div class="card" style="margin-top:12px;">
+  <div class="list-head">
+    <span class="stat-icon tone-teal"><i class="bi {{ current.icon }}" aria-hidden="true"></i></span>
+    <div>
+      <h3 style="margin:0;">{{ current.label }} <span class="list-count">{{ total_found }}</span></h3>
+      <p class="list-meaning">{{ current.meaning }}</p>
+    </div>
+  </div>
+
+  <form method="get" class="filter-bar">
+    <input type="hidden" name="filter" value="{{ current.key }}">
+    <div class="search-box"><i class="bi bi-search" aria-hidden="true"></i>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search name, phone or email"></div>
+    <select name="sort" onchange="this.form.submit()" aria-label="Sort by">
+      {% for key, label in sorts %}<option value="{{ key }}" {% if key == sort %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <button class="btn" type="submit">Search</button>
+    {% if q %}<a class="btn btn-secondary" href="?filter={{ current.key }}&amp;sort={{ sort }}">Clear</a>{% endif %}
+  </form>
+
+  <table style="width:100%;">
+    <thead>
+      <tr><th style="text-align:left;">Customer</th><th>Account</th><th>Package</th><th>Purchases</th><th>Total spent</th><th>Last purchase</th></tr>
+    </thead>
+    <tbody>
+      {% for c in customers %}
+      <tr>
+        <td data-label="Customer">
+          <a class="cust-name" href="{% url 'core:subscriptions' %}?q={{ c.phone_number|urlencode }}" title="See this customer's subscriptions">{{ c.full_name }}</a>
+          <div class="cust-sub">{{ c.phone_number }}{% if c.is_online %} &middot; <span class="online-dot"><i class="bi bi-circle-fill" aria-hidden="true"></i> Online</span>{% endif %}</div>
+        </td>
+        <td data-label="Account"><span class="badge {% if c.status == 'ACTIVE' %}badge-success{% elif c.status == 'INACTIVE' %}badge-warning{% else %}badge-danger{% endif %}">{{ c.get_status_display }}</span></td>
+        <td data-label="Package">
+          {% if c.has_paid_package %}
+            <span class="badge badge-success">Active</span>
+            <div class="cust-sub">until {{ c.package_expiry|date:"d M, H:i" }}</div>
+          {% elif c.package_expiry %}
+            <span class="badge badge-danger">Expired</span>
+            <div class="cust-sub">{{ c.expiry_ago }}</div>
+          {% else %}<span class="cust-sub">&mdash;</span>{% endif %}
+        </td>
+        <td data-label="Purchases"><i class="bi bi-bag" aria-hidden="true"></i> <strong>{{ c.purchase_count }}</strong></td>
+        <td data-label="Total spent">{{ branding.currency }} {{ c.total_paid|floatformat:"0" }}</td>
+        <td data-label="Last purchase">
+          {% if c.last_purchase %}{{ c.last_ago }}<div class="cust-sub">{{ c.last_purchase|date:"d M Y" }}</div>{% endif %}
+          <span class="pill pill-{{ c.recency_key }}">{{ c.recency_label }}</span>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">No customers in this group{% if q %} match &ldquo;{{ q }}&rdquo;{% endif %}.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% include "core/_pager.html" %}
+  <p class="list-meaning" style="margin-bottom:0;">
+    <strong>Recent buyer</strong> = bought in the last {{ recent_days }} days &middot;
+    <strong>Cooling off</strong> = {{ recent_days }}&ndash;{{ lapsed_days }} days &middot;
+    <strong>Lapsed</strong> = more than {{ lapsed_days }} days. Purchases count every package given (M-Pesa, voucher or staff-added).
+  </p>
+</div>
+{% endblock %}

@@ -34,13 +34,46 @@
   </div>
   {% endif %}
 
+  <form method="get" class="filter-bar" style="margin-bottom:12px;">
+    <div class="search-box"><i class="bi bi-search" aria-hidden="true"></i>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search name, phone, M-Pesa receipt or package"></div>
+    <select name="status" onchange="this.form.submit()" aria-label="Status">
+      <option value="">All statuses</option>
+      {% for value, label in status_choices %}<option value="{{ value }}" {% if value == sel_status %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <select name="package" onchange="this.form.submit()" aria-label="Package">
+      <option value="">All packages</option>
+      {% for p in packages %}<option value="{{ p.id }}" {% if p.id|stringformat:"s" == sel_package %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+    </select>
+    <select name="last" onchange="this.form.submit()" aria-label="Customer's last purchase">
+      <option value="">Any last purchase</option>
+      <option value="recent" {% if sel_last == 'recent' %}selected{% endif %}>Bought in last {{ recent_days }} days</option>
+      <option value="cooling" {% if sel_last == 'cooling' %}selected{% endif %}>{{ recent_days }}&ndash;{{ lapsed_days }} days ago</option>
+      <option value="lapsed" {% if sel_last == 'lapsed' %}selected{% endif %}>Over {{ lapsed_days }} days ago</option>
+    </select>
+    <select name="sort" onchange="this.form.submit()" aria-label="Sort by">
+      <option value="newest" {% if sel_sort == 'newest' %}selected{% endif %}>Newest purchase first</option>
+      <option value="oldest" {% if sel_sort == 'oldest' %}selected{% endif %}>Oldest purchase first</option>
+      <option value="lapsed" {% if sel_sort == 'lapsed' %}selected{% endif %}>Longest since customer last bought</option>
+      <option value="most" {% if sel_sort == 'most' %}selected{% endif %}>Most purchases</option>
+    </select>
+    <button class="btn" type="submit">Search</button>
+    {% if filters_active %}<a class="btn btn-secondary" href="{% url 'core:subscriptions' %}">Clear</a>{% endif %}
+  </form>
+  <p class="list-meaning" style="margin:0 0 8px;">{{ page_obj.paginator.count }} subscription{{ page_obj.paginator.count|pluralize }}</p>
+
   <div class="card">
     <table>
       <thead><tr><th>Customer</th><th>Package</th><th>Receipt</th><th>Status</th><th>Source</th><th>Activated</th><th>Expires</th><th>Add time</th></tr></thead>
       <tbody>
         {% for s in subscriptions %}
         <tr>
-          <td data-label="Customer">{{ s.customer.full_name }}</td>
+          <td data-label="Customer">
+            {{ s.customer.full_name }}
+            <div class="cust-sub">{{ s.customer.phone_number }}</div>
+            <div class="cust-sub"><i class="bi bi-bag" aria-hidden="true"></i> {{ s.cust_purchase_count }} purchase{{ s.cust_purchase_count|pluralize }}{% if s.last_ago %} &middot; last bought {{ s.last_ago|lower }}{% endif %}
+              <span class="pill pill-{{ s.recency_key }}">{{ s.recency_label }}</span></div>
+          </td>
           <td data-label="Package">{{ s.package.name }}</td>
           <td data-label="Receipt">{{ s.payment.mpesa_receipt_number|default:" " }}</td>
           <td data-label="Status"><span class="badge {% if s.status == 'ACTIVE' %}badge-success{% elif s.status == 'PENDING' %}badge-warning{% else %}badge-danger{% endif %}">{{ s.status }}</span></td>
@@ -88,6 +121,7 @@
         {% endfor %}
       </tbody>
     </table>
+    {% include "core/_pager.html" %}
   </div>
 </div>
 
