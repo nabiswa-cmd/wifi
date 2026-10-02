@@ -1,0 +1,49 @@
+{% extends "core/admin_base.html" %}
+{% block title %}My Transactions &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}My Transactions{% endblock %}
+{% block admin_content %}
+
+<div class="grid">
+  <div class="card"><h3>Total Earned</h3><p class="price">{{ branding.currency }} {{ balance.earned }}</p></div>
+  <div class="card"><h3>Paid To Me</h3><p class="price">{{ branding.currency }} {{ balance.withdrawn }}</p></div>
+  <div class="card"><h3>Awaiting Approval</h3><p class="price">{{ branding.currency }} {{ balance.pending }}</p></div>
+  <div class="card"><h3>Available To Withdraw</h3><p class="price">{{ branding.currency }} {{ balance.available }}</p>
+    <p style="color:var(--color-text-muted); font-size:.8rem; margin:2px 0 0;"><a href="{% url 'core:revenue_dashboard' %}#my-earnings">Request a withdrawal</a></p></div>
+</div>
+
+<div class="card" style="margin-top:12px;">
+  <h3 style="margin-top:0;">All My Transactions</h3>
+  <div style="overflow-x:auto;">
+  <table style="width:100%;">
+    <thead><tr>
+      <th style="text-align:left;">Date</th><th style="text-align:left;">Description</th>
+      <th>Status</th><th style="text-align:right;">Amount</th><th style="text-align:right;">Balance after</th>
+    </tr></thead>
+    <tbody>
+      {% for t in transactions %}
+      <tr>
+        <td>{{ t.when|date:"d M Y H:i" }}</td>
+        <td>{{ t.detail }}</td>
+        <td style="text-align:center;">
+          {% if t.status == 'Paid' or t.status == 'Credited' %}<span class="badge badge-success">{{ t.status }}</span>
+          {% elif t.status == 'Rejected' %}<span class="badge badge-danger">Rejected</span>
+          {% else %}<span class="badge">{{ t.status }}</span>{% endif %}
+        </td>
+        <td style="text-align:right; {% if t.amount < 0 %}color:#f85149;{% else %}color:#3fb950;{% endif %}">
+          {% if t.amount < 0 %}&minus; {{ branding.currency }} {{ t.amount|cut:"-" }}{% else %}+ {{ branding.currency }} {{ t.amount }}{% endif %}
+        </td>
+        <td style="text-align:right;">{{ branding.currency }} {{ t.balance_after }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" style="color:var(--color-text-muted);">No transactions yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p style="color:var(--color-text-muted); font-size:.8rem; margin-bottom:0;">
+    Pending and rejected withdrawal requests are listed for your records but don't change your balance until they're paid.
+    Only your own transactions are shown here.
+  </p>
+</div>
+
+{% endblock %}

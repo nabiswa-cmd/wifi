@@ -1,0 +1,118 @@
+{% extends "core/admin_base.html" %}
+{% block title %}Finance &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}Finance{% endblock %}
+{% block admin_content %}
+
+<div class="grid">
+  <div class="card"><h3>Company Wallet</h3><p class="price">{{ branding.currency }} {{ wallet.balance }}</p>
+    <p style="color:var(--color-text-muted); font-size:.8rem; margin:2px 0 0;">Tracked since {{ wallet.tracking_since|date:"d M Y" }}</p></div>
+  <div class="card"><h3>Revenue In</h3><p class="price">{{ branding.currency }} {{ wallet.revenue }}</p></div>
+  <div class="card"><h3>Subscriptions Paid</h3><p class="price">{{ branding.currency }} {{ wallet.subscriptions }}</p></div>
+  <div class="card"><h3>Withdrawals Paid</h3><p class="price">{{ branding.currency }} {{ wallet.withdrawals }}</p></div>
+  <div class="card"><h3>Profit Payouts Paid</h3><p class="price">{{ branding.currency }} {{ wallet.payouts }}</p></div>
+  {% if wallet.adjustments %}<div class="card"><h3>Adjustments</h3><p class="price">{{ branding.currency }} {{ wallet.adjustments }}</p></div>{% endif %}
+</div>
+
+<div class="card" style="margin-top:12px;">
+  <h3 style="margin-top:0;">Shareholder Balances</h3>
+  <div style="overflow-x:auto;">
+  <table style="width:100%;">
+    <thead><tr>
+      <th style="text-align:left;">Shareholder</th><th>%</th><th>Total earned</th><th>Withdrawn</th><th>Pending request</th><th>Remaining balance</th>
+    </tr></thead>
+    <tbody>
+      {% for r in shareholder_rows %}
+      <tr>
+        <td>{{ r.shareholder }}</td>
+        <td style="text-align:center;">{{ r.shareholder.percentage }}%</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ r.earned }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ r.withdrawn }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ r.pending }}</td>
+        <td style="text-align:right; font-weight:700;">{{ branding.currency }} {{ r.remaining }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">No shareholders on file yet.</td></tr>
+      {% endfor %}
+      {% if shareholder_rows %}
+      <tr style="font-weight:700; border-top:1px solid var(--color-border);">
+        <td>Total</td><td></td>
+        <td style="text-align:right;">{{ branding.currency }} {{ shareholder_totals.earned }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ shareholder_totals.withdrawn }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ shareholder_totals.pending }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ shareholder_totals.remaining }}</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+  </div>
+  <p style="color:var(--color-text-muted); font-size:.8rem; margin-bottom:0;">
+    Total earned includes the cycle in progress. Withdrawn counts approved withdrawals plus profit paid with
+    &ldquo;Pay all shareholders&rdquo;. Remaining balance = earned &minus; withdrawn.
+  </p>
+</div>
+
+<div class="card" style="margin-top:12px;">
+  <h3 style="margin-top:0;">Company Records</h3>
+  <div style="overflow-x:auto;">
+  <table style="width:100%;">
+    <thead><tr>
+      <th style="text-align:left;">Cycle</th><th style="text-align:left;">Dates</th><th>Revenue</th><th>Subscription</th><th>Profit</th><th>Paid to shareholders</th><th>Status</th>
+    </tr></thead>
+    <tbody>
+      {% for rec in records %}
+      <tr>
+        <td>{{ rec.period.label }}</td>
+        <td>{{ rec.period.start_date|date:"d M" }} &ndash; {% if rec.in_progress %}now{% else %}{{ rec.period.end_at|date:"d M Y" }}{% endif %}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ rec.revenue }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ rec.subscription_cost }}</td>
+        <td style="text-align:right; font-weight:700;">{{ branding.currency }} {{ rec.profit }}</td>
+        <td style="text-align:right;">{% if rec.paid_out is None %}&mdash;{% else %}{{ branding.currency }} {{ rec.paid_out }}{% endif %}</td>
+        <td>
+          {% if rec.in_progress %}<span class="badge">In progress</span>
+          {% elif rec.status == 'Paid' %}<span class="badge badge-success">Paid</span>
+          {% else %}<span class="badge badge-danger">Awaiting payout</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px;">
+  <h3 style="margin-top:0;">Money Flow</h3>
+  <div style="overflow-x:auto;">
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">When</th><th style="text-align:left;">What</th><th style="text-align:left;">Who</th><th style="text-align:right;">Amount</th><th style="text-align:right;">Wallet after</th></tr></thead>
+    <tbody>
+      {% for r in ledger %}
+      <tr>
+        <td>{{ r.when|date:"d M Y H:i" }}</td>
+        <td>{{ r.label }}{% if r.detail %} <span style="color:var(--color-text-muted);">&middot; {{ r.detail }}</span>{% endif %}</td>
+        <td>{{ r.who|default:"" }}</td>
+        <td style="text-align:right;">{% if r.amount < 0 %}&minus; {{ branding.currency }} {{ r.amount|cut:"-" }}{% else %}+ {{ branding.currency }} {{ r.amount }}{% endif %}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ r.balance_after }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" style="color:var(--color-text-muted);">No money movements recorded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px;">
+  <h3 style="margin-top:0;">Adjust Wallet</h3>
+  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
+    For an opening balance, or a payment the system didn't record. Positive adds to the wallet, negative takes away.
+  </p>
+  <form method="post" action="{% url 'core:add_wallet_adjustment' %}" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;"
+        onsubmit="return confirm('Adjust the company wallet by this amount?');">
+    {% csrf_token %}
+    <label style="font-size:.8rem;">Amount <input type="number" step="0.01" name="amount" required style="display:block; max-width:180px;"></label>
+    <label style="font-size:.8rem;">Note <input type="text" name="note" maxlength="255" required placeholder="e.g. Opening balance" style="display:block; min-width:240px;"></label>
+    <button class="btn" type="submit">Save adjustment</button>
+  </form>
+</div>
+
+{% endblock %}

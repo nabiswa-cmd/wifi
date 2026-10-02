@@ -7,6 +7,7 @@
       <a href="{% url 'core:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a>
       {% if request.user.staff_profile.role.name == 'SUPER_ADMIN' or request.user.staff_profile.role.name == 'SHAREHOLDER' %}
       <a href="{% url 'core:revenue_dashboard' %}" class="{% if request.resolver_match.url_name == 'revenue_dashboard' %}active{% endif %}">Revenue</a>
+      {% if request.user.shareholder_profile %}<a href="{% url 'core:my_transactions' %}" class="{% if request.resolver_match.url_name == 'my_transactions' %}active{% endif %}">My Transactions</a>{% endif %}
       <a href="{% url 'core:feedback_list' %}" class="{% if request.resolver_match.url_name == 'feedback_list' %}active{% endif %}">
         Customer Feedback
         {% if feedback_new_count %}<span class="sidebar-badge">{{ feedback_new_count }}</span>{% endif %}
@@ -23,6 +24,7 @@
       {% if request.user.staff_profile.role.name == 'SUPER_ADMIN' %}
       <hr style="border-color:rgba(255,255,255,.12); margin:8px 16px;">
       <div style="padding:6px 16px; font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; color:#8a8a8a;">Company</div>
+      <a href="{% url 'core:finance' %}" class="{% if request.resolver_match.url_name == 'finance' %}active{% endif %}">Finance</a>
       <a href="{% url 'core:withdrawal_requests_admin' %}" class="{% if request.resolver_match.url_name == 'withdrawal_requests_admin' %}active{% endif %}">
         Withdrawal Requests
         {% if pending_withdrawals_count %}<span class="sidebar-badge">{{ pending_withdrawals_count }}</span>{% endif %}

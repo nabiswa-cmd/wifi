@@ -32,6 +32,29 @@
   </div>
 </div>
 
+<div class="card" style="margin-top:12px;" id="company-wallet">
+  <h3 style="margin-top:0;">Company Wallet</h3>
+  <p class="price">{{ branding.currency }} {{ wallet_balance }}</p>
+  <p style="color:var(--color-text-muted); font-size:.8rem; margin-top:0;">Money available in the company right now. It goes down when the subscription is paid and when shareholders are paid out.</p>
+  <div style="overflow-x:auto;">
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">When</th><th style="text-align:left;">What</th><th style="text-align:right;">Amount</th><th style="text-align:right;">Wallet after</th></tr></thead>
+    <tbody>
+      {% for r in wallet_ledger %}
+      <tr>
+        <td>{{ r.when|date:"d M Y H:i" }}</td>
+        <td>{{ r.label }}{% if r.detail %} <span style="color:var(--color-text-muted);">&middot; {{ r.detail }}</span>{% endif %}</td>
+        <td style="text-align:right;">{% if r.amount is not None %}&minus; {{ branding.currency }} {{ r.amount|cut:"-" }}{% else %}&mdash;{% endif %}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ r.balance_after }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" style="color:var(--color-text-muted);">No money movements recorded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
 {% if is_main_admin %}
 <div class="card" style="margin-top:12px;" id="billing-cycle">
   <h3 style="margin-top:0;">Billing cycle &middot; {{ period.label }}</h3>
@@ -251,9 +274,13 @@
     <tr><td>Your share quantity</td><td style="text-align:right;">{{ my_shareholder.share_quantity }}</td></tr>
     <tr><td>Your contribution</td><td style="text-align:right;">{{ branding.currency }} {{ my_shareholder.contribution }}</td></tr>
     <tr><td>Your share percentage</td><td style="text-align:right;">{{ my_shareholder.percentage }}%</td></tr>
-    <tr style="font-weight:700;"><td>Your earnings &middot; {{ current_month_label }}</td><td style="text-align:right;">{{ branding.currency }} {{ my_earnings }}</td></tr>
-    <tr style="font-weight:700; color:var(--color-primary);"><td>Available to withdraw</td><td style="text-align:right;">{{ branding.currency }} {{ available_to_withdraw }}</td></tr>
+    <tr><td>Your earnings &middot; {{ current_month_label }}</td><td style="text-align:right;">{{ branding.currency }} {{ my_earnings }}</td></tr>
+    <tr><td>Total earned, all cycles</td><td style="text-align:right;">{{ branding.currency }} {{ my_balance.earned }}</td></tr>
+    <tr><td>Already paid to you</td><td style="text-align:right;">&minus; {{ branding.currency }} {{ my_balance.withdrawn }}</td></tr>
+    {% if my_balance.pending %}<tr><td>Awaiting approval</td><td style="text-align:right;">&minus; {{ branding.currency }} {{ my_balance.pending }}</td></tr>{% endif %}
+    <tr style="font-weight:700; color:var(--color-primary);"><td>Available to withdraw (your balance)</td><td style="text-align:right;">{{ branding.currency }} {{ available_to_withdraw }}</td></tr>
   </table>
+  <p style="color:var(--color-text-muted); font-size:.8rem; margin:6px 0 0;">Your balance carries over from cycle to cycle &mdash; it does not reset when a new cycle starts. <a href="{% url 'core:my_transactions' %}">See all my transactions &rarr;</a></p>
 
 
   {% if available_to_withdraw > 0 %}

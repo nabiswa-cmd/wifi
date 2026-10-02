@@ -308,8 +308,13 @@ def revenue_dashboard(request):
     context['my_shareholder'] = my_shareholder
     context['my_earnings'] = my_shareholder.earnings_for(distributable_profit) if my_shareholder else None
     if my_shareholder:
+        # Running balance across ALL cycles - Subscribe starting a new cycle
+        # must never reset what a shareholder can still withdraw.
+        from apps.core import finance as _fin
+        bal = _fin.shareholder_balance(my_shareholder, current_profit=distributable_profit)
         context['withdrawal_period'] = month_start
-        context['available_to_withdraw'] = my_shareholder.available_to_withdraw(distributable_profit, month_start)
+        context['my_balance'] = bal
+        context['available_to_withdraw'] = bal['available']
         context['my_withdrawals'] = my_shareholder.withdrawal_requests.order_by('-created_at')[:15]
 
     from apps.billing.models import ShareIncreaseRequest
@@ -326,11 +331,13 @@ def revenue_dashboard(request):
         context['shareholder_rows'] = rows
         from apps.billing.models import EarningsPeriod as _EP, ShareholderPayout as _SP
         closed = list(_EP.objects.filter(end_at__isnull=False).order_by('-start_at')[:6])
+        from apps.core import finance as _fin2
         for cp in closed:
             cp.payout_rows = list(cp.payouts.select_related('shareholder', 'shareholder__user'))
             cp.unpaid_count = sum(1 for r in cp.payout_rows if r.status == _SP.Status.PENDING)
+            planned = {po.pk: amt for po, amt in _fin2.plan_payouts(cp)} if cp.unpaid_count else {}
             for r in cp.payout_rows:
-                r.due_now = r.amount_due() if r.status == _SP.Status.PENDING else r.amount_paid
+                r.due_now = planned.get(r.pk, 0) if r.status == _SP.Status.PENDING else r.amount_paid
         context['closed_periods'] = closed
         from apps.vouchers.models import VoucherBatch
         context['pending_voucher_requests'] = VoucherBatch.objects.filter(
@@ -364,6 +371,12 @@ def revenue_dashboard(request):
         # the request form (request_share_increase) is the only write path.
         context['my_share_increase_requests'] = my_shareholder.share_increase_requests.order_by('-created_at')[:15]
 
+    # Company wallet: visible to every shareholder, but with NO withdrawal
+    # amounts or names - only the balance, and amounts for subscriptions.
+    from apps.core import finance as fin
+    context['wallet_balance'] = fin.wallet_summary()['balance']
+    context['wallet_ledger'] = fin.ledger_rows(show_amounts=False, limit=15)
+
     return render(request, 'core/revenue_dashboard.html', context)
 
 
@@ -388,11 +401,11 @@ def request_withdrawal(request):
 
     from apps.billing.models import EarningsPeriod
 
+    from apps.core import finance as fin
+
     period = EarningsPeriod.current()
-    month_start = period.start_date
-    company_revenue = period.compute_revenue()
-    distributable_profit = Shareholder.distributable_profit(company_revenue)
-    available = my_shareholder.available_to_withdraw(distributable_profit, month_start)
+    month_start = period.start_date   # the cycle the request is recorded against
+    available = fin.shareholder_balance(my_shareholder)['available']   # across ALL cycles
 
     phone = (request.POST.get('payment_phone') or '').strip()
     account_name = (request.POST.get('payment_account_name') or '').strip()
@@ -407,7 +420,7 @@ def request_withdrawal(request):
     if amount <= 0:
         messages.error(request, 'Enter a withdrawal amount greater than zero.')
     elif amount > available:
-        messages.error(request, f'You can withdraw up to {available} this cycle.')
+        messages.error(request, f'You can withdraw up to {available}.')
     elif not phone:
         messages.error(request, 'Enter the phone number the payout should be sent to.')
     else:
@@ -746,27 +759,27 @@ def pay_all_shareholders(request):
         messages.error(request, 'No period selected.')
         return redirect(back)
 
+    from apps.core import finance as fin
+
     paid = []
     with transaction.atomic():
         period = get_object_or_404(
             EarningsPeriod.objects.select_for_update(), pk=period_id, end_at__isnull=False
         )
-        payouts = list(
-            ShareholderPayout.objects.select_for_update()
-            .filter(period=period, status=ShareholderPayout.Status.PENDING)
-            .select_related('shareholder', 'shareholder__user', 'period')
-        )
         now = timezone.now()
-        for payout in payouts:
-            payout.amount_paid = payout.amount_due()
+        touched = {period.pk: period}
+        for payout, amount in fin.plan_payouts(period, lock=True):
+            payout.amount_paid = amount
             payout.status = ShareholderPayout.Status.PAID
             payout.paid_at = now
             payout.save(update_fields=['amount_paid', 'status', 'paid_at'])
             paid.append(payout)
-        if not period.payouts.filter(status=ShareholderPayout.Status.PENDING).exists() and not period.paid_out_at:
-            period.paid_out_at = now
-            period.paid_out_by = request.user
-            period.save(update_fields=['paid_out_at', 'paid_out_by'])
+            touched[payout.period_id] = payout.period
+        for p in touched.values():
+            if not p.payouts.filter(status=ShareholderPayout.Status.PENDING).exists() and not p.paid_out_at:
+                p.paid_out_at = now
+                p.paid_out_by = request.user
+                p.save(update_fields=['paid_out_at', 'paid_out_by'])
 
     if not paid:
         messages.info(request, f'Nothing to pay - everyone for {period.label} is already marked paid.')
@@ -774,6 +787,8 @@ def pay_all_shareholders(request):
 
     emailed = skipped = 0
     for payout in paid:
+        if payout.amount_paid <= 0:
+            continue   # fully withdrawn already - nothing to tell them
         if payout.shareholder.user.email:
             send_profit_payout_email(payout)
             payout.emailed_at = timezone.now()
@@ -791,6 +806,83 @@ def pay_all_shareholders(request):
     if skipped:
         msg += f' {skipped} had no email on file - add one on their account so they get notified next time.'
     messages.success(request, msg)
+    return redirect(back)
+
+
+@login_required(login_url='core:shareholder_login')
+def my_transactions(request):
+    """
+    A shareholder's own statement: profit credited each cycle, withdrawals
+    (pending / paid / rejected) and profit payouts, with a running balance.
+    Strictly their own record - it is built from request.user's Shareholder
+    row only, so nobody can see anyone else's transactions here.
+    """
+    from apps.core import finance as fin
+
+    if not _can_view_revenue_dashboard(request.user):
+        return HttpResponse('Forbidden.', status=403)
+
+    sh = getattr(request.user, 'shareholder_profile', None)
+    if sh is None:
+        messages.error(request, 'No shareholder record is linked to your account.')
+        return redirect('core:revenue_dashboard')
+
+    return render(request, 'core/my_transactions.html', {
+        'my_shareholder': sh,
+        'balance': fin.shareholder_balance(sh),
+        'transactions': fin.shareholder_transactions(sh),
+    })
+
+
+@login_required(login_url='core:admin_login')
+def finance(request):
+    """
+    Main-Admin-only Finance page: the company wallet with full amounts,
+    what each shareholder has earned / withdrawn / has left, and the
+    per-cycle records table (revenue, subscription, profit, payout status).
+    Shareholders never reach this page - they only get the amount-free
+    wallet card on their revenue dashboard (see revenue_dashboard).
+    """
+    from apps.core import finance as fin
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden: finance is restricted to the Company.', status=403)
+
+    sh_rows, sh_totals = fin.shareholder_rows()
+    return render(request, 'core/finance.html', {
+        'wallet': fin.wallet_summary(),
+        'ledger': fin.ledger_rows(show_amounts=True, limit=50),
+        'shareholder_rows': sh_rows,
+        'shareholder_totals': sh_totals,
+        'records': fin.period_records(),
+    })
+
+
+@login_required(login_url='core:admin_login')
+@require_POST
+def add_wallet_adjustment(request):
+    """Main-Admin-only manual wallet correction (signed amount + required note)."""
+    from apps.billing.models import WalletAdjustment
+    from apps.core.audit import log_action
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden.', status=403)
+
+    back = reverse('core:finance')
+    note = (request.POST.get('note') or '').strip()[:255]
+    try:
+        amount = Decimal((request.POST.get('amount') or '').strip())
+    except (InvalidOperation, ValueError):
+        messages.error(request, 'Enter a valid amount (use a minus sign to reduce the wallet).')
+        return redirect(back)
+    if amount == 0:
+        messages.error(request, 'The adjustment cannot be zero.')
+    elif not note:
+        messages.error(request, 'Add a short note explaining the adjustment.')
+    else:
+        adj = WalletAdjustment.objects.create(amount=amount, note=note, created_by=request.user)
+        log_action(request.user, 'WALLET_ADJUSTMENT', adj, new_value={'amount': str(amount), 'note': note})
+        messages.success(request, f'Wallet adjusted by {amount}.')
     return redirect(back)
 
 

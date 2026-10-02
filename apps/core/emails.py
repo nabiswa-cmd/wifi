@@ -235,7 +235,7 @@ def send_profit_payout_email(payout):
         f'Cycle: {period.start_date:%d %b %Y} to {timezone_date(period.end_at):%d %b %Y}\n'
         f'Distributable profit for the cycle: {currency} {period.distributable_profit}\n'
         + (
-            f'Already withdrawn earlier this cycle: {currency} {payout.earnings - payout.amount_paid}\n'
+            f'Already paid to you earlier (withdrawals): {currency} {payout.earnings - payout.amount_paid}\n'
             if payout.amount_paid < payout.earnings else ''
         )
         + f'\nThank you for being part of {business}.\n{business}'

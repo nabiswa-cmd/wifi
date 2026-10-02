@@ -590,7 +590,26 @@ class ShareholderPayout(models.Model):
     def __str__(self):
         return f'{self.shareholder} - {self.period} ({self.status})'
 
-    def amount_due(self) -> Decimal:
-        """Earnings still owed right now (earnings minus paid/pending withdrawals for this period)."""
-        due = self.earnings - self.shareholder.withdrawn_or_pending_for(self.period.start_date)
-        return due if due > 0 else Decimal('0.00')
+
+class WalletAdjustment(models.Model):
+    """
+    Manual correction to the company wallet, entered by the Company only
+    (e.g. "opening balance" or a subscription paid before the system
+    tracked them). `amount` is signed: positive adds to the wallet,
+    negative takes from it. Everything else in the wallet is derived from
+    real records (see apps.core.finance), so this is the only thing that
+    is ever typed in by hand.
+    """
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    note = models.CharField(max_length=255)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'billing_walletadjustment'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.amount} - {self.note}'

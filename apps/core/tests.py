@@ -217,3 +217,227 @@ class VoucherConnectTimingTests(TestCase):
         get = RequestFactory().get('/s/', {'mac': mac})
         vviews.voucher_status(get, voucher.id)
         self.assertEqual(MikroTikJob.objects.filter(job_type='BYPASS_MAC', status='PENDING').count(), 1)
+
+
+class FinanceTests(TestCase):
+    """Wallet maths, shareholder balances, records table, and who may see what."""
+
+    def setUp(self):
+        SystemSettings.objects.update_or_create(pk=1, defaults={
+            'total_capital': Decimal('1000'), 'subscription_cost': Decimal('500'),
+        })
+        self.admin = _make_user('boss', 'SUPER_ADMIN', 'boss@example.com')
+        self.sh_user = _make_user('sh1', 'SHAREHOLDER', 'sh1@example.com')
+        self.sh = Shareholder.objects.create(user=self.sh_user, full_name='Sharon', contribution=Decimal('1000'))
+        pkg = InternetPackage.objects.create(name='Day', price=100, duration=1, duration_unit='DAYS')
+        cust = Customer.objects.create(full_name='c', phone_number='254712345678')
+        EarningsPeriod.objects.create(label='September earnings', start_at=timezone.now() - dt.timedelta(days=20))
+        for amt in (3000, 2000):
+            p = Payment.objects.create(customer=cust, package=pkg, phone_number='254712345678',
+                                       amount=amt, status=Payment.Status.SUCCESS)
+            Payment.objects.filter(pk=p.pk).update(created_at=timezone.now() - dt.timedelta(days=5))
+
+    def _flow(self):
+        """Subscribe, then Sharon withdraws 1234 (approved), as the admin would."""
+        self.client.force_login(self.admin)
+        self.client.post(reverse('core:subscribe_new_period'))
+        w = WithdrawalRequest.objects.create(
+            shareholder=self.sh, amount=Decimal('1234.00'), period_start=EarningsPeriod.objects.get(
+                label='September earnings').start_date, payment_phone='0712',
+        )
+        self.client.post(reverse('core:decide_withdrawal', args=[w.id]), {'action': 'approve'})
+
+    def test_wallet_balance_drops_on_subscription_and_withdrawal(self):
+        from apps.core import finance as fin
+        self.assertEqual(fin.wallet_summary()['balance'], Decimal('5000.00'))
+        self._flow()
+        s = fin.wallet_summary()
+        self.assertEqual(s['subscriptions'], Decimal('500.00'))
+        self.assertEqual(s['withdrawals'], Decimal('1234.00'))
+        self.assertEqual(s['balance'], Decimal('3266.00'))   # 5000 - 500 - 1234
+
+    def test_pay_all_reduces_wallet_by_what_was_paid(self):
+        from apps.core import finance as fin
+        self._flow()
+        old = EarningsPeriod.objects.get(label='September earnings')
+        self.client.post(reverse('core:pay_all_shareholders'), {'period_id': old.id})
+        # profit 4500, Sharon owns 100% -> earned 4500, already withdrew 1234 -> paid 3266
+        self.assertEqual(fin.wallet_summary()['payouts'], Decimal('3266.00'))
+        self.assertEqual(fin.wallet_summary()['balance'], Decimal('0.00'))
+        row = fin.shareholder_rows()[0][0]
+        self.assertEqual(row['earned'], Decimal('4500.00'))
+        self.assertEqual(row['withdrawn'], Decimal('4500.00'))
+        self.assertEqual(row['remaining'], Decimal('0.00'))
+
+    def test_shareholder_balance_row_before_any_payout(self):
+        from apps.core import finance as fin
+        self._flow()
+        row = fin.shareholder_rows()[0][0]
+        self.assertEqual(row['earned'], Decimal('4500.00'))   # closed Sept cycle: 5000 - 500
+        self.assertEqual(row['withdrawn'], Decimal('1234.00'))
+        self.assertEqual(row['remaining'], Decimal('3266.00'))
+
+    def test_other_shareholder_sees_balance_but_never_withdrawal_amounts(self):
+        from django.test import Client
+        self._flow()
+        other = _make_user('sh2', 'SHAREHOLDER', 'sh2@example.com')
+        Shareholder.objects.create(user=other, full_name='Other', contribution=Decimal('0'))
+        c = Client()
+        c.force_login(other)
+        html = c.get(reverse('core:revenue_dashboard')).content.decode()
+        self.assertIn('Company Wallet', html)
+        self.assertIn('3266.00', html)                 # the balance
+        self.assertNotIn('1234', html)                 # the withdrawal amount, anywhere on their page
+        self.assertNotIn('Sharon', html.split('id="company-wallet"')[1].split('Total Capital')[0])
+        self.assertIn('Shareholder withdrawal', html)  # that it happened
+        self.assertIn('Subscription paid', html)
+        self.assertIn('500.00', html)                  # subscription amount IS shown
+
+    def test_admin_finance_shows_full_detail(self):
+        self._flow()
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('core:finance'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, '1234.00')
+        self.assertContains(resp, 'Sharon')
+        self.assertContains(resp, 'September earnings')
+        self.assertContains(resp, 'Awaiting payout')
+        recs = resp.context['records']
+        self.assertTrue(recs[0]['in_progress'])
+        self.assertEqual(recs[1]['revenue'], Decimal('5000.00'))
+        self.assertEqual(recs[1]['profit'], Decimal('4500.00'))
+
+    def test_finance_is_admin_only(self):
+        self.client.force_login(self.sh_user)
+        self.assertEqual(self.client.get(reverse('core:finance')).status_code, 403)
+        self.assertEqual(self.client.post(reverse('core:add_wallet_adjustment'),
+                                          {'amount': '100', 'note': 'x'}).status_code, 403)
+        dash = self.client.get(reverse('core:revenue_dashboard')).content.decode()
+        self.assertNotIn(reverse('core:finance'), dash)   # no sidebar link either
+
+    def test_adjustment_changes_wallet_and_hides_amount_from_shareholders(self):
+        from apps.core import finance as fin
+        self.client.force_login(self.admin)
+        self.client.post(reverse('core:add_wallet_adjustment'), {'amount': '-777.50', 'note': 'old sub'})
+        self.assertEqual(fin.wallet_summary()['balance'], Decimal('4222.50'))
+        self.client.post(reverse('core:add_wallet_adjustment'), {'amount': '10', 'note': ''})   # note required
+        self.client.post(reverse('core:add_wallet_adjustment'), {'amount': '0', 'note': 'z'})   # zero refused
+        self.assertEqual(fin.wallet_summary()['balance'], Decimal('4222.50'))
+        from django.test import Client
+        c = Client()
+        c.force_login(self.sh_user)
+        html = c.get(reverse('core:revenue_dashboard')).content.decode()
+        self.assertNotIn('777.50', html)
+        self.assertIn('Balance adjustment', html)
+
+
+class CarryOverBalanceTests(TestCase):
+    """Available-to-withdraw is a running balance: a new cycle must not reset it."""
+
+    def setUp(self):
+        from django.test import Client
+        SystemSettings.objects.update_or_create(pk=1, defaults={
+            'total_capital': Decimal('1000'), 'subscription_cost': Decimal('500'),
+        })
+        self.admin = _make_user('boss', 'SUPER_ADMIN', 'boss@example.com')
+        self.sh_user = _make_user('sh1', 'SHAREHOLDER', 'sh1@example.com')
+        self.sh = Shareholder.objects.create(user=self.sh_user, full_name='Sharon', contribution=Decimal('1000'))
+        pkg = InternetPackage.objects.create(name='Day', price=100, duration=1, duration_unit='DAYS')
+        cust = Customer.objects.create(full_name='c', phone_number='254712345678')
+        EarningsPeriod.objects.create(label='September earnings', start_at=timezone.now() - dt.timedelta(days=20))
+        p = Payment.objects.create(customer=cust, package=pkg, phone_number='254712345678',
+                                   amount=5000, status=Payment.Status.SUCCESS)
+        Payment.objects.filter(pk=p.pk).update(created_at=timezone.now() - dt.timedelta(days=5))
+        self.admin_client, self.sh_client = Client(), Client()
+        self.admin_client.force_login(self.admin)
+        self.sh_client.force_login(self.sh_user)
+
+    def _available(self):
+        return self.sh_client.get(reverse('core:revenue_dashboard')).context['available_to_withdraw']
+
+    def test_available_survives_subscribe(self):
+        self.assertEqual(self._available(), Decimal('4500.00'))        # 5000 - 500 subscription
+        self.admin_client.post(reverse('core:subscribe_new_period'))   # brand-new cycle, 0 revenue
+        self.assertEqual(self._available(), Decimal('4500.00'))        # NOT reset to 0
+
+    def test_can_withdraw_last_cycles_money_in_new_cycle_but_not_more(self):
+        self.admin_client.post(reverse('core:subscribe_new_period'))
+        self.sh_client.post(reverse('core:request_withdrawal'), {'amount': '4000', 'payment_phone': '0712'})
+        self.assertEqual(WithdrawalRequest.objects.count(), 1)
+        self.assertEqual(self._available(), Decimal('500.00'))         # pending request already reserved
+        self.sh_client.post(reverse('core:request_withdrawal'), {'amount': '600', 'payment_phone': '0712'})
+        self.assertEqual(WithdrawalRequest.objects.count(), 1)         # over the balance: refused
+        self.sh_client.post(reverse('core:request_withdrawal'), {'amount': '500', 'payment_phone': '0712'})
+        self.assertEqual(WithdrawalRequest.objects.count(), 2)
+        self.assertEqual(self._available(), Decimal('0.00'))
+
+    def test_rejected_request_frees_the_balance_again(self):
+        self.sh_client.post(reverse('core:request_withdrawal'), {'amount': '4000', 'payment_phone': '0712'})
+        w = WithdrawalRequest.objects.get()
+        self.admin_client.post(reverse('core:decide_withdrawal', args=[w.id]), {'action': 'reject', 'reason': 'no'})
+        self.assertEqual(self._available(), Decimal('4500.00'))
+
+    def test_pay_all_never_pays_a_withdrawal_twice_across_cycles(self):
+        from apps.core import finance as fin
+        self.admin_client.post(reverse('core:subscribe_new_period'))
+        # Sharon withdraws 4000 AFTER the subscribe (tagged to the new cycle), admin approves it.
+        self.sh_client.post(reverse('core:request_withdrawal'), {'amount': '4000', 'payment_phone': '0712'})
+        w = WithdrawalRequest.objects.get()
+        self.admin_client.post(reverse('core:decide_withdrawal', args=[w.id]), {'action': 'approve'})
+        sept = EarningsPeriod.objects.get(label='September earnings')
+        self.admin_client.post(reverse('core:pay_all_shareholders'), {'period_id': sept.id})
+        po = ShareholderPayout.objects.get(period=sept)
+        self.assertEqual(po.earnings, Decimal('4500.00'))
+        self.assertEqual(po.amount_paid, Decimal('500.00'))            # 4500 owed - 4000 already withdrawn
+        self.assertEqual(fin.shareholder_balance(self.sh)['remaining'], Decimal('0.00'))
+        self.assertEqual(fin.wallet_summary()['balance'], Decimal('0.00'))   # 5000 - 500 sub - 4000 - 500
+
+    def test_pay_all_with_nothing_owed_does_not_email(self):
+        self.sh_client.post(reverse('core:request_withdrawal'), {'amount': '4500', 'payment_phone': '0712'})
+        w = WithdrawalRequest.objects.get()
+        self.admin_client.post(reverse('core:decide_withdrawal', args=[w.id]), {'action': 'approve'})
+        self.admin_client.post(reverse('core:subscribe_new_period'))
+        mail.outbox.clear()
+        sept = EarningsPeriod.objects.get(label='September earnings')
+        self.admin_client.post(reverse('core:pay_all_shareholders'), {'period_id': sept.id})
+        self.assertEqual(ShareholderPayout.objects.get(period=sept).amount_paid, Decimal('0.00'))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_my_transactions_shows_own_statement_with_running_balance(self):
+        self.admin_client.post(reverse('core:subscribe_new_period'))
+        self.sh_client.post(reverse('core:request_withdrawal'), {'amount': '1000', 'payment_phone': '0712'})
+        w = WithdrawalRequest.objects.get()
+        self.admin_client.post(reverse('core:decide_withdrawal', args=[w.id]), {'action': 'approve'})
+        self.sh_client.post(reverse('core:request_withdrawal'), {'amount': '200', 'payment_phone': '0712'})  # pending
+
+        resp = self.sh_client.get(reverse('core:my_transactions'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'September earnings profit share')
+        self.assertContains(resp, 'Withdrawal to 0712')
+        self.assertContains(resp, 'Pending')
+        tx = resp.context['transactions']
+        self.assertEqual(tx[0]['balance_after'], Decimal('3500.00'))   # 4500 earned - 1000 paid; pending not deducted
+        self.assertEqual(resp.context['balance']['available'], Decimal('3300.00'))   # minus the 200 pending
+
+    def test_my_transactions_never_shows_another_shareholders_data(self):
+        from django.test import Client
+        self.sh_client.post(reverse('core:request_withdrawal'), {'amount': '1234', 'payment_phone': '0799888777'})
+        other = _make_user('sh2', 'SHAREHOLDER', 'sh2@example.com')
+        Shareholder.objects.create(user=other, full_name='Other', contribution=Decimal('0'))
+        c = Client(); c.force_login(other)
+        html = c.get(reverse('core:my_transactions')).content.decode()
+        self.assertNotIn('1234', html)
+        self.assertNotIn('0799888777', html)
+        self.assertNotIn('Sharon', html)
+
+    def test_my_transactions_link_and_access(self):
+        from django.test import Client
+        html = self.sh_client.get(reverse('core:revenue_dashboard')).content.decode()
+        self.assertIn(reverse('core:my_transactions'), html)
+        # staff with no shareholder record get redirected with a message, not a crash
+        plain = _make_user('ops', 'OPERATOR', '')
+        c = Client(); c.force_login(plain)
+        self.assertEqual(c.get(reverse('core:my_transactions')).status_code, 403)
+        # an admin who isn't a shareholder: no crash, redirected back
+        resp = self.admin_client.get(reverse('core:my_transactions'))
+        self.assertEqual(resp.status_code, 302)
