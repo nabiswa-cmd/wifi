@@ -213,51 +213,48 @@ def revenue_dashboard(request):
     if not _can_view_revenue_dashboard(request.user):
         return HttpResponse('Forbidden: revenue dashboard is restricted to shareholders and the Company.', status=403)
 
+    from apps.billing.models import EarningsPeriod
+
     is_main_admin = _is_main_admin(request.user)
     now = timezone.now()
     today = timezone.localdate()
-    month_start = today.replace(day=1)
-    prev_month_end = month_start - timedelta(days=1)
-    prev_month_start = prev_month_end.replace(day=1)
+
+    # The "month" is the Company-controlled billing cycle (EarningsPeriod),
+    # not the calendar month: day one is whenever Subscribe was last pressed.
+    period = EarningsPeriod.current()
+    month_start = period.start_date
+    previous_period = EarningsPeriod.objects.filter(end_at__isnull=False).order_by('-start_at').first()
 
     revenue_qs = Payment.objects.filter(status=Payment.Status.SUCCESS)
 
     todays_revenue = revenue_qs.filter(created_at__date=today).aggregate(t=Sum('amount'))['t'] or 0
     todays_payment_count = revenue_qs.filter(created_at__date=today).count()
 
-    month_agg = revenue_qs.filter(created_at__date__gte=month_start, created_at__date__lte=today).aggregate(
-        total=Sum('amount'), count=Count('id')
-    )
+    period_qs = revenue_qs.filter(created_at__gte=period.start_at)
+    month_agg = period_qs.aggregate(total=Sum('amount'), count=Count('id'))
     company_revenue = month_agg['total'] or 0
     month_payment_count = month_agg['count'] or 0
 
-    prev_month_revenue = revenue_qs.filter(
-        created_at__date__gte=prev_month_start, created_at__date__lte=prev_month_end
-    ).aggregate(t=Sum('amount'))['t'] or 0
+    prev_month_revenue = (previous_period.revenue if previous_period else 0) or 0
 
     if prev_month_revenue:
         growth_pct = float((company_revenue - prev_month_revenue) / prev_month_revenue * 100)
     else:
         growth_pct = 100.0 if company_revenue else 0.0
 
-    # Daily curve across the current financial month so far.
-    days_so_far = [month_start + timedelta(days=i) for i in range((today - month_start).days + 1)]
+    # Daily curve across the current cycle so far.
+    days_so_far = [month_start + timedelta(days=i) for i in range(max((today - month_start).days, 0) + 1)]
     revenue_by_day = {
         row['created_at__date']: row['total']
-        for row in revenue_qs.filter(created_at__date__gte=month_start, created_at__date__lte=today)
-        .values('created_at__date').annotate(total=Sum('amount'))
+        for row in period_qs.values('created_at__date').annotate(total=Sum('amount'))
     }
     daily_chart_labels = [d.strftime('%d %b') for d in days_so_far]
     daily_chart_revenue = [float(revenue_by_day.get(d, 0)) for d in days_so_far]
 
-    # Historical monthly performance (previous financial periods), oldest first.
-    historical = (
-        revenue_qs.filter(created_at__date__lt=month_start, created_at__gte=now - timedelta(days=365))
-        .annotate(month=TruncMonth('created_at'))
-        .values('month').annotate(total=Sum('amount')).order_by('month')
-    )
-    historical_labels = [h['month'].strftime('%b %Y') for h in historical]
-    historical_totals = [float(h['total']) for h in historical]
+    # Historical performance: previous closed cycles, oldest first.
+    past_periods = list(EarningsPeriod.objects.filter(end_at__isnull=False).order_by('-start_at')[:12])[::-1]
+    historical_labels = [p.label for p in past_periods]
+    historical_totals = [float(p.revenue or 0) for p in past_periods]
 
     distributable_profit = Shareholder.distributable_profit(company_revenue)
     total_capital = SystemSettings.load().total_capital
@@ -297,7 +294,10 @@ def revenue_dashboard(request):
         'daily_chart_revenue': daily_chart_revenue,
         'historical_labels': historical_labels,
         'historical_totals': historical_totals,
-        'current_month_label': month_start.strftime('%B %Y'),
+        'current_month_label': period.label,
+        'period': period,
+        'period_day': period.day_number,
+        'previous_period_label': previous_period.label if previous_period else '',
     }
 
     from apps.billing.models import WithdrawalRequest
@@ -324,6 +324,14 @@ def revenue_dashboard(request):
                 'earnings': sh.earnings_for(distributable_profit),
             })
         context['shareholder_rows'] = rows
+        from apps.billing.models import EarningsPeriod as _EP, ShareholderPayout as _SP
+        closed = list(_EP.objects.filter(end_at__isnull=False).order_by('-start_at')[:6])
+        for cp in closed:
+            cp.payout_rows = list(cp.payouts.select_related('shareholder', 'shareholder__user'))
+            cp.unpaid_count = sum(1 for r in cp.payout_rows if r.status == _SP.Status.PENDING)
+            for r in cp.payout_rows:
+                r.due_now = r.amount_due() if r.status == _SP.Status.PENDING else r.amount_paid
+        context['closed_periods'] = closed
         from apps.vouchers.models import VoucherBatch
         context['pending_voucher_requests'] = VoucherBatch.objects.filter(
             approval_status=VoucherBatch.ApprovalStatus.PENDING
@@ -378,12 +386,11 @@ def request_withdrawal(request):
         messages.error(request, 'No shareholder record is linked to your account.')
         return redirect(back)
 
-    today = timezone.localdate()
-    month_start = today.replace(day=1)
-    revenue_qs = Payment.objects.filter(status=Payment.Status.SUCCESS)
-    company_revenue = revenue_qs.filter(
-        created_at__date__gte=month_start, created_at__date__lte=today
-    ).aggregate(total=Sum('amount'))['total'] or 0
+    from apps.billing.models import EarningsPeriod
+
+    period = EarningsPeriod.current()
+    month_start = period.start_date
+    company_revenue = period.compute_revenue()
     distributable_profit = Shareholder.distributable_profit(company_revenue)
     available = my_shareholder.available_to_withdraw(distributable_profit, month_start)
 
@@ -400,7 +407,7 @@ def request_withdrawal(request):
     if amount <= 0:
         messages.error(request, 'Enter a withdrawal amount greater than zero.')
     elif amount > available:
-        messages.error(request, f'You can withdraw up to {available} this month.')
+        messages.error(request, f'You can withdraw up to {available} this cycle.')
     elif not phone:
         messages.error(request, 'Enter the phone number the payout should be sent to.')
     else:
@@ -620,6 +627,170 @@ def decide_share_increase(request, request_id):
     else:
         messages.error(request, 'Unknown action.')
 
+    return redirect(back)
+
+
+@login_required(login_url='core:admin_login')
+@require_POST
+def subscribe_new_period(request):
+    """
+    Main-Admin-only "Subscribe" button. Marks the moment the platform
+    subscription was paid: closes the open earnings period (freezing its
+    revenue, subscription cost, distributable profit and every
+    shareholder's share of it) and opens the next one, so day one of the
+    next 30-day cycle starts exactly when the Company says, not on the 1st.
+
+    Optional form fields:
+      start_at - "datetime-local" for day one; blank = right now. Can be
+                 in the past (subscribed yesterday) but not the future.
+      label    - override for the default "<Month> earnings" name.
+    """
+    import datetime as dt
+
+    from django.db import transaction
+    from apps.billing.models import EarningsPeriod, Shareholder, ShareholderPayout
+    from apps.core.models import SystemSettings
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden.', status=403)
+
+    back = reverse('core:revenue_dashboard')
+    now = timezone.now()
+
+    raw_start = (request.POST.get('start_at') or '').strip()
+    if raw_start:
+        try:
+            new_start = timezone.make_aware(dt.datetime.fromisoformat(raw_start))
+        except ValueError:
+            messages.error(request, 'That start date/time was not valid.')
+            return redirect(back)
+    else:
+        new_start = now
+
+    if new_start > now + dt.timedelta(minutes=1):
+        messages.error(request, 'Day one cannot be in the future - pick now or an earlier time.')
+        return redirect(back)
+
+    with transaction.atomic():
+        period = (
+            EarningsPeriod.objects.select_for_update()
+            .filter(end_at__isnull=True).order_by('-start_at').first()
+        ) or EarningsPeriod.current()
+
+        if timezone.localtime(new_start).date() <= period.start_date:
+            messages.error(
+                request,
+                f'The new cycle must start after {period.label} began '
+                f'({period.start_date:%d %b %Y}).',
+            )
+            return redirect(back)
+
+        revenue = period.compute_revenue(until=new_start)
+        profit = Shareholder.distributable_profit(revenue)
+
+        period.end_at = new_start
+        period.revenue = revenue
+        period.subscription_cost = SystemSettings.load().subscription_cost
+        period.distributable_profit = profit
+        period.closed_by = request.user
+        period.save()
+
+        for sh in Shareholder.objects.filter(is_active=True):
+            ShareholderPayout.objects.update_or_create(
+                period=period, shareholder=sh,
+                defaults={'percentage': sh.percentage, 'earnings': sh.earnings_for(profit)},
+            )
+
+        label = (request.POST.get('label') or '').strip()[:100] or EarningsPeriod.default_label(new_start)
+        EarningsPeriod.objects.create(label=label, start_at=new_start)
+
+    from apps.core.audit import log_action
+    log_action(request.user, 'SUBSCRIBE_NEW_PERIOD', period,
+               new_value={'closed': period.label, 'revenue': str(revenue), 'profit': str(profit),
+                          'next_start': new_start.isoformat(), 'next_label': label})
+
+    messages.success(
+        request,
+        f'Subscribed. {period.label} is closed (revenue {revenue}, distributable profit {profit}) '
+        f'and {label} starts now at day 1.',
+    )
+    return redirect(back)
+
+
+@login_required(login_url='core:admin_login')
+@require_POST
+def pay_all_shareholders(request):
+    """
+    Main-Admin-only "Pay all shareholders" button. Marks every unpaid
+    shareholder payout of the chosen CLOSED period as paid and emails each
+    shareholder the amount that was paid to them.
+
+    Payouts are manual (the Company sends the M-Pesa himself, then presses
+    this), same convention as WithdrawalRequest.approve_and_pay. What is
+    paid is each shareholder's frozen earnings for the period minus
+    anything they already withdrew or have pending for it, so nobody is
+    paid twice for the same money. Pressing it twice is harmless: only
+    payouts still marked unpaid are touched.
+    """
+    from django.db import transaction
+    from apps.billing.models import EarningsPeriod, ShareholderPayout
+    from apps.core.emails import send_profit_payout_email
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden.', status=403)
+
+    back = reverse('core:revenue_dashboard')
+    try:
+        period_id = int(request.POST.get('period_id', ''))
+    except ValueError:
+        messages.error(request, 'No period selected.')
+        return redirect(back)
+
+    paid = []
+    with transaction.atomic():
+        period = get_object_or_404(
+            EarningsPeriod.objects.select_for_update(), pk=period_id, end_at__isnull=False
+        )
+        payouts = list(
+            ShareholderPayout.objects.select_for_update()
+            .filter(period=period, status=ShareholderPayout.Status.PENDING)
+            .select_related('shareholder', 'shareholder__user', 'period')
+        )
+        now = timezone.now()
+        for payout in payouts:
+            payout.amount_paid = payout.amount_due()
+            payout.status = ShareholderPayout.Status.PAID
+            payout.paid_at = now
+            payout.save(update_fields=['amount_paid', 'status', 'paid_at'])
+            paid.append(payout)
+        if not period.payouts.filter(status=ShareholderPayout.Status.PENDING).exists() and not period.paid_out_at:
+            period.paid_out_at = now
+            period.paid_out_by = request.user
+            period.save(update_fields=['paid_out_at', 'paid_out_by'])
+
+    if not paid:
+        messages.info(request, f'Nothing to pay - everyone for {period.label} is already marked paid.')
+        return redirect(back)
+
+    emailed = skipped = 0
+    for payout in paid:
+        if payout.shareholder.user.email:
+            send_profit_payout_email(payout)
+            payout.emailed_at = timezone.now()
+            payout.save(update_fields=['emailed_at'])
+            emailed += 1
+        else:
+            skipped += 1
+
+    total = sum((p.amount_paid for p in paid), Decimal('0.00'))
+    from apps.core.audit import log_action
+    log_action(request.user, 'PAY_ALL_SHAREHOLDERS', period,
+               new_value={'period': period.label, 'total': str(total), 'shareholders': len(paid)})
+
+    msg = f'{period.label}: marked {len(paid)} shareholder(s) paid, {total} in total. Emailed {emailed}.'
+    if skipped:
+        msg += f' {skipped} had no email on file - add one on their account so they get notified next time.'
+    messages.success(request, msg)
     return redirect(back)
 
 

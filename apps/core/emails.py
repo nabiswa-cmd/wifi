@@ -212,3 +212,38 @@ def send_custom_email(subject, message, recipients, sender_name=''):
     business = _business_name()
     footer = f'\n\n {business}' + (f', from {sender_name}' if sender_name else '')
     _send(subject, message + footer, recipients, fail_context='custom email')
+
+
+def send_profit_payout_email(payout):
+    """
+    Sent to each shareholder when the Company presses "Pay all
+    shareholders" (see core.views.pay_all_shareholders), telling them the
+    exact amount that was paid out to them for the period.
+    """
+    business = _business_name()
+    currency = _currency()
+    shareholder = payout.shareholder
+    user = shareholder.user
+    period = payout.period
+    name = shareholder.full_name or user.get_username()
+    subject = f'Your {period.label} profit has been paid  {business}'
+    message = (
+        f'Hi {name},\n\n'
+        f'Your share of the {period.label} profit has been paid out: '
+        f'{currency} {payout.amount_paid}.\n\n'
+        f'Your stake: {payout.percentage}%\n'
+        f'Cycle: {period.start_date:%d %b %Y} to {timezone_date(period.end_at):%d %b %Y}\n'
+        f'Distributable profit for the cycle: {currency} {period.distributable_profit}\n'
+        + (
+            f'Already withdrawn earlier this cycle: {currency} {payout.earnings - payout.amount_paid}\n'
+            if payout.amount_paid < payout.earnings else ''
+        )
+        + f'\nThank you for being part of {business}.\n{business}'
+    )
+    _send(subject, message, [user.email], fail_context='profit payout email', heading=f'{period.label} paid')
+
+
+def timezone_date(value):
+    """Local calendar date of an aware datetime (small helper for the email text above)."""
+    from django.utils import timezone
+    return timezone.localtime(value).date()

@@ -476,3 +476,121 @@ class ShareIncreaseRequest(models.Model):
         self.decided_at = timezone.now()
         self.rejection_reason = reason
         self.save(update_fields=['status', 'decided_by', 'decided_at', 'rejection_reason', 'updated_at'])
+
+
+class EarningsPeriod(models.Model):
+    """
+    One earnings/billing cycle, named after the month it starts in
+    ("September earnings"). Replaces the hard-coded "1st of the calendar
+    month" cutoff: the Company decides when day one starts by pressing
+    Subscribe on the revenue dashboard (see core.views.subscribe_new_period),
+    because the platform is paid for in 30-day cycles that rarely line up
+    with the calendar.
+
+    Exactly one period is open at a time (end_at is NULL). Subscribing
+    closes it - freezing revenue, subscription cost and distributable
+    profit as they were at that moment - and opens the next one.
+    """
+    label = models.CharField(max_length=100)
+    start_at = models.DateTimeField(db_index=True)
+    end_at = models.DateTimeField(blank=True, null=True)
+
+    # Frozen when the period is closed; NULL while it is still open.
+    revenue = models.DecimalField(max_digits=14, decimal_places=2, blank=True, null=True)
+    subscription_cost = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    distributable_profit = models.DecimalField(max_digits=14, decimal_places=2, blank=True, null=True)
+
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+'
+    )
+    paid_out_at = models.DateTimeField(blank=True, null=True)
+    paid_out_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'billing_earningsperiod'
+        ordering = ['-start_at']
+
+    def __str__(self):
+        return self.label
+
+    @property
+    def is_open(self):
+        return self.end_at is None
+
+    @property
+    def start_date(self):
+        """Local calendar date day one fell on. Also the key WithdrawalRequest.period_start uses."""
+        return timezone.localtime(self.start_at).date()
+
+    @property
+    def day_number(self):
+        """Which day of the cycle today is (day one = the start date)."""
+        return (timezone.localdate() - self.start_date).days + 1
+
+    @staticmethod
+    def default_label(start_at):
+        return f'{timezone.localtime(start_at):%B} earnings'
+
+    @classmethod
+    def current(cls):
+        """
+        The open period. If none exists yet (first run after this feature
+        ships), start one on the 1st of the current month so the numbers
+        the dashboard shows today don't suddenly change.
+        """
+        period = cls.objects.filter(end_at__isnull=True).order_by('-start_at').first()
+        if period:
+            return period
+        import datetime as _dt
+        today = timezone.localdate()
+        first = timezone.make_aware(_dt.datetime(today.year, today.month, 1))
+        return cls.objects.create(label=cls.default_label(first), start_at=first)
+
+    def compute_revenue(self, until=None):
+        """Successful M-Pesa revenue inside this period (never failed/pending payments)."""
+        end = self.end_at or until
+        qs = Payment.objects.filter(status=Payment.Status.SUCCESS, created_at__gte=self.start_at)
+        if end is not None:
+            qs = qs.filter(created_at__lt=end)
+        return qs.aggregate(total=models.Sum('amount'))['total'] or Decimal('0.00')
+
+
+class ShareholderPayout(models.Model):
+    """
+    What one shareholder is owed from one CLOSED period, frozen when the
+    period was closed (percentage + earnings) so a later share increase
+    can't change a cycle that's already been counted. `amount_paid` is
+    what actually went out in "Pay all shareholders": earnings minus
+    whatever they'd already withdrawn (or have pending) for that period.
+    """
+    class Status(models.TextChoices):
+        PENDING = 'PENDING', 'Unpaid'
+        PAID = 'PAID', 'Paid'
+
+    period = models.ForeignKey(EarningsPeriod, on_delete=models.CASCADE, related_name='payouts')
+    shareholder = models.ForeignKey(Shareholder, on_delete=models.CASCADE, related_name='payouts')
+    percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    earnings = models.DecimalField(max_digits=12, decimal_places=2)
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
+    paid_at = models.DateTimeField(blank=True, null=True)
+    emailed_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = 'billing_shareholderpayout'
+        ordering = ['-percentage']
+        constraints = [
+            models.UniqueConstraint(fields=['period', 'shareholder'], name='uniq_payout_per_period_shareholder'),
+        ]
+
+    def __str__(self):
+        return f'{self.shareholder} - {self.period} ({self.status})'
+
+    def amount_due(self) -> Decimal:
+        """Earnings still owed right now (earnings minus paid/pending withdrawals for this period)."""
+        due = self.earnings - self.shareholder.withdrawn_or_pending_for(self.period.start_date)
+        return due if due > 0 else Decimal('0.00')

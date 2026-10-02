@@ -5,7 +5,9 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from apps.mikrotik.services import connect_payment_device
-from .models import Payment, ShareIncreaseRequest, Shareholder, Subscription, WithdrawalRequest
+from .models import (
+    EarningsPeriod, Payment, ShareIncreaseRequest, Shareholder, ShareholderPayout, Subscription, WithdrawalRequest,
+)
 
 
 def _resolve_subscription(payment):
@@ -145,3 +147,14 @@ class WithdrawalRequestAdmin(admin.ModelAdmin):
     list_filter = ('status', 'period_start')
     search_fields = ('shareholder__full_name', 'payment_phone', 'payment_account_name')
     readonly_fields = ('decided_by', 'decided_at')
+
+@admin.register(EarningsPeriod)
+class EarningsPeriodAdmin(admin.ModelAdmin):
+    list_display = ('label', 'start_at', 'end_at', 'revenue', 'distributable_profit', 'paid_out_at')
+    readonly_fields = ('revenue', 'subscription_cost', 'distributable_profit', 'closed_by', 'paid_out_at', 'paid_out_by')
+
+
+@admin.register(ShareholderPayout)
+class ShareholderPayoutAdmin(admin.ModelAdmin):
+    list_display = ('period', 'shareholder', 'percentage', 'earnings', 'amount_paid', 'status', 'paid_at', 'emailed_at')
+    list_filter = ('status', 'period')

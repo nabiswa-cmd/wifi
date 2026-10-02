@@ -92,4 +92,29 @@ def voucher_status(request, voucher_id):
                 created_at__gte=session.login_time,
             ).exists()
 
-    return JsonResponse({'connected': connected})
+    response = {'connected': connected}
+
+    # Self-heal, same idea as billing.views.payment_status: if nothing is
+    # in flight for this device (the first bypass job FAILED, or was never
+    # queued because the router was briefly unreachable), re-assert it
+    # instead of leaving the customer on "Connecting" until the page
+    # times out. A PENDING job means the agent just hasn't reached it yet,
+    # so we leave that alone rather than piling on duplicates every poll.
+    if not connected and router and mac_address and voucher.status == Voucher.Status.USED:
+        session = InternetSession.objects.filter(
+            voucher=voucher, mac_address=mac_address,
+        ).order_by('-login_time').first()
+        in_flight = bool(session and session.login_time) and MikroTikJob.objects.filter(
+            router=router, job_type=MikroTikJob.JobType.BYPASS_MAC,
+            payload__mac_address=mac_address,
+            status=MikroTikJob.Status.PENDING,
+            created_at__gte=session.login_time,
+        ).exists()
+        subscription = Subscription.objects.filter(voucher=voucher).order_by('-created_at').first()
+        still_entitled = bool(subscription and subscription.is_currently_entitled())
+        if not in_flight and still_entitled:
+            warning = connect_voucher_device(request, voucher)
+            if warning:
+                response['warning'] = warning
+
+    return JsonResponse(response)

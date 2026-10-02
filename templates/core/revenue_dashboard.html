@@ -10,22 +10,22 @@
 <div class="grid">
   <div class="card"><h3>Today's Revenue</h3><p class="price">{{ branding.currency }} {{ todays_revenue }}</p></div>
   <div class="card"><h3>Today's Successful Payments</h3><p class="price">{{ todays_payment_count }}</p></div>
-  <div class="card"><h3>{{ current_month_label }} Revenue</h3><p class="price">{{ branding.currency }} {{ company_revenue }}</p></div>
-  <div class="card"><h3>{{ current_month_label }} Payments</h3><p class="price">{{ month_payment_count }}</p></div>
+  <div class="card"><h3>{{ current_month_label }}</h3><p class="price">{{ branding.currency }} {{ company_revenue }}</p><p style="color:var(--color-text-muted); font-size:.8rem; margin:2px 0 0;">Day {{ period_day }} &middot; started {{ period.start_date|date:"d M Y" }}</p></div>
+  <div class="card"><h3>{{ current_month_label }} &middot; Payments</h3><p class="price">{{ month_payment_count }}</p></div>
   <div class="card">
-    <h3>Growth vs Previous Month</h3>
+    <h3>Growth vs Previous Cycle</h3>
     <p class="price" style="{% if growth_pct < 0 %}color:#f85149{% else %}color:#3fb950{% endif %}">
       {% if growth_pct > 0 %}+{% endif %}{{ growth_pct }}%
     </p>
   </div>
-  <div class="card"><h3>Previous Month Revenue</h3><p class="price">{{ branding.currency }} {{ prev_month_revenue }}</p></div>
+  <div class="card"><h3>{% if previous_period_label %}{{ previous_period_label }}{% else %}Previous Cycle{% endif %}</h3><p class="price">{{ branding.currency }} {{ prev_month_revenue }}</p></div>
 </div>
 
 <div class="grid" style="grid-template-columns: 1fr; margin-top:4px;">
   <div class="card">
     <h3>Company Revenue And Distributable Profit</h3>
     <table style="width:100%; margin-top:8px;">
-      <tr><td>Monthly Revenue, {{ current_month_label }}</td><td style="text-align:right;">{{ branding.currency }} {{ company_revenue }}</td></tr>
+      <tr><td>Revenue, {{ current_month_label }}</td><td style="text-align:right;">{{ branding.currency }} {{ company_revenue }}</td></tr>
       <tr><td>Subscription Cost</td><td style="text-align:right;">&minus; {{ branding.currency }} {{ subscription_cost }}</td></tr>
       <tr style="font-weight:700; border-top:1px solid var(--color-border);"><td>Distributable Profit</td><td style="text-align:right;">{{ branding.currency }} {{ distributable_profit }}</td></tr>
     </table>
@@ -33,6 +33,62 @@
 </div>
 
 {% if is_main_admin %}
+<div class="card" style="margin-top:12px;" id="billing-cycle">
+  <h3 style="margin-top:0;">Billing cycle &middot; {{ period.label }}</h3>
+  <p style="color:var(--color-text-muted); font-size:.9rem; margin-top:0;">
+    Day {{ period_day }} of this cycle (started {{ period.start_date|date:"d M Y" }}).
+    Press <strong>Subscribe</strong> when you pay the subscription: this cycle closes with its
+    profit locked in, and day one of the next cycle starts when you say.
+  </p>
+  <form method="post" action="{% url 'core:subscribe_new_period' %}" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;"
+        onsubmit="return confirm('Close {{ period.label|escapejs }} and start a new cycle? This cannot be undone.');">
+    {% csrf_token %}
+    <label style="font-size:.8rem;">Day one starts
+      <input type="datetime-local" name="start_at" style="display:block;">
+      <span style="color:var(--color-text-muted);">Leave blank for right now</span>
+    </label>
+    <label style="font-size:.8rem;">Name (optional)
+      <input type="text" name="label" maxlength="100" placeholder="e.g. October earnings" style="display:block;">
+    </label>
+    <button class="btn" type="submit">Subscribe</button>
+  </form>
+</div>
+
+{% for cp in closed_periods %}
+<div class="card" style="margin-top:12px;">
+  <h3 style="margin-top:0;">{{ cp.label }}
+    {% if cp.unpaid_count %}<span class="badge badge-danger">Unpaid</span>{% else %}<span class="badge badge-success">Paid</span>{% endif %}
+  </h3>
+  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
+    {{ cp.start_date|date:"d M" }} &ndash; {{ cp.end_at|date:"d M Y" }} &middot;
+    Revenue {{ branding.currency }} {{ cp.revenue }} &minus; subscription {{ branding.currency }} {{ cp.subscription_cost }}
+    = profit {{ branding.currency }} {{ cp.distributable_profit }}
+  </p>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Shareholder</th><th>%</th><th>Earnings</th><th>{% if cp.unpaid_count %}To pay now{% else %}Paid{% endif %}</th></tr></thead>
+    <tbody>
+      {% for r in cp.payout_rows %}
+      <tr>
+        <td>{{ r.shareholder }}</td>
+        <td style="text-align:center;">{{ r.percentage }}%</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ r.earnings }}</td>
+        <td style="text-align:right;">{{ branding.currency }} {{ r.due_now }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if cp.unpaid_count %}
+  <form method="post" action="{% url 'core:pay_all_shareholders' %}" style="margin-top:10px;"
+        onsubmit="return confirm('Mark every shareholder as paid for {{ cp.label|escapejs }} and email each one their amount?');">
+    {% csrf_token %}
+    <input type="hidden" name="period_id" value="{{ cp.id }}">
+    <button class="btn" type="submit">Pay all shareholders</button>
+    <span style="color:var(--color-text-muted); font-size:.8rem;">Send the money first, then press this &mdash; each shareholder is emailed what they were paid.</span>
+  </form>
+  {% endif %}
+</div>
+{% endfor %}
+
 <div class="card" style="margin-top:12px;">
   <h3>Total Capital Invested</h3>
   
@@ -48,7 +104,7 @@
   <h3>Shareholder Distribution</h3>
   <table style="width:100%;">
     <thead>
-      <tr><th style="text-align:left;">Shareholder</th><th>Shares</th><th>Contribution</th><th>%</th><th>Earnings ({{ current_month_label }})</th></tr>
+      <tr><th style="text-align:left;">Shareholder</th><th>Shares</th><th>Contribution</th><th>%</th><th>Earnings (this cycle)</th></tr>
     </thead>
     <tbody>
       {% for row in shareholder_rows %}
@@ -195,7 +251,7 @@
     <tr><td>Your share quantity</td><td style="text-align:right;">{{ my_shareholder.share_quantity }}</td></tr>
     <tr><td>Your contribution</td><td style="text-align:right;">{{ branding.currency }} {{ my_shareholder.contribution }}</td></tr>
     <tr><td>Your share percentage</td><td style="text-align:right;">{{ my_shareholder.percentage }}%</td></tr>
-    <tr style="font-weight:700;"><td>Your earnings ({{ current_month_label }})</td><td style="text-align:right;">{{ branding.currency }} {{ my_earnings }}</td></tr>
+    <tr style="font-weight:700;"><td>Your earnings &middot; {{ current_month_label }}</td><td style="text-align:right;">{{ branding.currency }} {{ my_earnings }}</td></tr>
     <tr style="font-weight:700; color:var(--color-primary);"><td>Available to withdraw</td><td style="text-align:right;">{{ branding.currency }} {{ available_to_withdraw }}</td></tr>
   </table>
 

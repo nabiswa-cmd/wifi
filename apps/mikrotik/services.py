@@ -315,6 +315,22 @@ def connect_voucher_device(request, voucher):
         router = MikroTikRouter.objects.filter(is_active=True).first()
         warning = None
 
+        # The session (and its login_time) MUST be written BEFORE the
+        # bypass job is queued. voucher_status only trusts a DONE
+        # BYPASS_MAC job created at/after session.login_time - when this
+        # ran after the bypass, the job always predated login_time, so
+        # the router granted internet but the page sat on "Connecting"
+        # until it timed out. connect_payment_device already does it in
+        # this order, which is why M-Pesa reconnect never had the delay.
+        InternetSession.objects.update_or_create(
+            voucher=voucher, mac_address=new_mac,
+            defaults={
+                'customer': voucher.customer, 'subscription': subscription, 'router': router,
+                'ip_address': ip_address, 'status': InternetSession.Status.ACTIVE,
+                'login_time': timezone.now(), 'mikrotik_username': new_mac,
+            },
+        )
+
         # PRIORITY: get the NEW device online first. Releasing the old
         # device is real but genuinely secondary   it must never delay
         # granting access to the device that's actually waiting right now.
@@ -342,15 +358,6 @@ def connect_voucher_device(request, voucher):
         else:
             warning = ("Your voucher is valid and your time is reserved, but no router "
                        "is configured yet, so we can't get you online automatically.")
-
-        InternetSession.objects.update_or_create(
-            voucher=voucher, mac_address=new_mac,
-            defaults={
-                'customer': voucher.customer, 'subscription': subscription, 'router': router,
-                'ip_address': ip_address, 'status': InternetSession.Status.ACTIVE,
-                'login_time': timezone.now(), 'mikrotik_username': new_mac,
-            },
-        )
 
         if voucher.mac_address != new_mac:
             voucher.mac_address = new_mac
