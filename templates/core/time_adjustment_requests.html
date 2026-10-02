@@ -1,0 +1,84 @@
+{% extends "core/admin_base.html" %}
+{% block title %}Time Adjustment Requests &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}Time Adjustment Requests{% endblock %}
+{% block admin_content %}
+
+<div class="card">
+  <h3 style="margin-top:0;">Shareholders asking for more adjustments</h3>
+  <p style="color:var(--color-text-muted); font-size:.85rem; margin-top:0;">
+    Everyone gets a daily allowance of time adjustments. When someone runs out they can ask for more here.
+    Choose how many extra adjustments to give them &mdash; the grant is valid for today only.
+  </p>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Shareholder</th><th>Used today</th><th>Reason</th><th>Requested</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for r in pending_requests %}
+      <tr>
+        <td data-label="Shareholder">{{ r.requester }}</td>
+        <td data-label="Used today">{{ r.used_today }} of {{ r.limit_today }}</td>
+        <td data-label="Reason">{{ r.note|default:"—" }}</td>
+        <td data-label="Requested">{{ r.created_at|date:"d M Y H:i" }}</td>
+        <td data-label="Action">
+          <form method="post" action="{% url 'core:decide_time_adjustment_request' r.id %}" data-spin
+                style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+            {% csrf_token %}
+            <input type="number" name="count" min="1" max="{{ max_grant }}" value="3" required
+                   style="margin:0; padding:6px; width:72px; font-size:.8rem;" title="How many extra adjustments to grant">
+            <button class="btn" type="submit" name="action" value="approve" style="padding:6px 10px; font-size:.8rem;">Grant</button>
+            <button class="btn btn-secondary" type="submit" name="action" value="decline" style="padding:6px 10px; font-size:.8rem;" formnovalidate>Decline</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5">No requests awaiting a decision.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if recent_requests %}
+<div class="card" style="margin-top:12px;">
+  <h4 style="margin:0 0 6px;">Recent decisions</h4>
+  <table style="width:100%;">
+    <thead><tr><th style="text-align:left;">Shareholder</th><th>Result</th><th>Decided by</th><th>When</th></tr></thead>
+    <tbody>
+      {% for r in recent_requests %}
+      <tr>
+        <td data-label="Shareholder">{{ r.requester }}</td>
+        <td data-label="Result">{% if r.status == 'APPROVED' %}<span class="badge badge-success">Granted {{ r.granted_count }} for {{ r.valid_on|date:"d M" }}</span>{% else %}<span class="badge badge-danger">Declined</span>{% endif %}</td>
+        <td data-label="Decided by">{{ r.decided_by }}</td>
+        <td data-label="When">{{ r.decided_at|date:"d M Y H:i" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<script>
+  // Same double-click guard as the subscriptions page: show a spinner and
+  // ignore further submits while a decision is being saved.
+  (function () {
+    var busy = false;
+    document.querySelectorAll('form[data-spin]').forEach(function (form) {
+      form.addEventListener('submit', function (e) {
+        if (busy) { e.preventDefault(); return; }
+        busy = true;
+        var clicked = e.submitter;
+        if (clicked) {
+          // keep the chosen action in the POST even though we disable the buttons
+          var hidden = document.createElement('input');
+          hidden.type = 'hidden'; hidden.name = clicked.name; hidden.value = clicked.value;
+          form.appendChild(hidden);
+          clicked.classList.add('is-loading');
+          clicked.insertAdjacentHTML('afterbegin', '<span class="btn-spinner" aria-hidden="true"></span>');
+        }
+        setTimeout(function () {
+          form.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+        }, 0);
+      });
+    });
+    window.addEventListener('pageshow', function (e) { if (e.persisted) { window.location.reload(); } });
+  })();
+</script>
+{% endblock %}

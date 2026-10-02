@@ -6,6 +6,34 @@
 {% block admin_content %}
 <div style="padding:20px;">
   <h2>Subscriptions</h2>
+
+  {% if quota %}
+  <div class="card quota-card" style="margin-bottom:12px;">
+    <div style="display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; justify-content:space-between;">
+      <div>
+        <strong>Time adjustments today:</strong>
+        <span class="quota-count {% if quota.remaining == 0 %}quota-empty{% endif %}">{{ quota.used }} of {{ quota.limit }} used</span>
+        <div style="color:var(--color-text-muted); font-size:.8rem;">Each adjustment can add up to {{ max_minutes }} minutes (1 hour).</div>
+      </div>
+      {% if quota.remaining == 0 %}
+        {% if quota.pending_request %}
+          <span class="badge badge-warning">Request sent &middot; waiting for the Company</span>
+        {% else %}
+          <form method="post" action="{% url 'core:request_more_time_adjustments' %}" data-spin
+                style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:0;">
+            {% csrf_token %}
+            <input type="text" name="note" maxlength="255" placeholder="Why do you need more? (optional)"
+                   style="margin:0; padding:6px; font-size:.8rem; min-width:200px;">
+            <button class="btn" type="submit" data-loading-text="Sending&hellip;" style="padding:8px 12px; font-size:.8rem;">
+              <span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">Request more adjustments</span>
+            </button>
+          </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="card">
     <table>
       <thead><tr><th>Customer</th><th>Package</th><th>Receipt</th><th>Status</th><th>Source</th><th>Activated</th><th>Expires</th><th>Add time</th></tr></thead>
@@ -20,26 +48,39 @@
           <td data-label="Activated">{{ s.activation_time|default:" " }}</td>
           <td data-label="Expires">{{ s.expiry_time|default:" " }}</td>
           <td data-label="Add time">
-            <form method="post" action="{% url 'core:add_subscription_time' s.id %}"
-                  style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;"
-                  onsubmit="const sel=this.querySelector('.reason-select'); const custom=this.querySelector('.reason-custom'); if(sel.value==='OTHER'){sel.name='';} else {custom.name='';}">
+            {% if not is_main_admin and quota.remaining == 0 %}
+              <span style="color:var(--color-text-muted); font-size:.8rem;">Daily limit reached</span>
+            {% else %}
+            <form method="post" action="{% url 'core:add_subscription_time' s.id %}" data-spin data-reason-form
+                  style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
               {% csrf_token %}
-              <select name="minutes" style="margin:0;padding:6px;font-size:.8rem;">
+              {% if is_main_admin %}
+              <input type="date" name="expiry_date" required min="{{ today|date:'Y-m-d' }}"
+                     value="{% if s.expiry_time %}{{ s.expiry_time|date:'Y-m-d' }}{% else %}{{ today|date:'Y-m-d' }}{% endif %}"
+                     style="margin:0;padding:6px;font-size:.8rem;width:auto;" title="New expiry date">
+              <input type="time" name="expiry_time" required
+                     value="{% if s.expiry_time %}{{ s.expiry_time|date:'H:i' }}{% endif %}"
+                     style="margin:0;padding:6px;font-size:.8rem;width:auto;" title="New expiry time">
+              {% else %}
+              <select name="minutes" style="margin:0;padding:6px;font-size:.8rem;width:auto;">
                 <option value="5">+5 min</option>
                 <option value="10">+10 min</option>
                 <option value="30" selected>+30 min</option>
                 <option value="60">+1 hour</option>
               </select>
-              <select name="reason" class="reason-select" style="margin:0;padding:6px;font-size:.8rem;"
-                      onchange="const c=this.form.querySelector('.reason-custom'); const isOther=(this.value==='OTHER'); c.hidden=!isOther; c.required=isOther;">
+              {% endif %}
+              <select name="reason" class="reason-select" style="margin:0;padding:6px;font-size:.8rem;width:auto;">
                 <option value="Electricity">Electricity</option>
                 <option value="Failed connection">Failed connection</option>
                 <option value="OTHER">Other / Custom reason</option>
               </select>
               <input type="text" name="reason" class="reason-custom" placeholder="Enter reason"
                      style="margin:0;padding:6px;font-size:.8rem;width:120px;" hidden>
-              <button class="btn" type="submit" style="padding:6px 10px;font-size:.75rem;">Add</button>
+              <button class="btn" type="submit" data-loading-text="Adding&hellip;" style="padding:6px 10px;font-size:.75rem;">
+                <span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">{% if is_main_admin %}Set expiry{% else %}Add{% endif %}</span>
+              </button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% empty %}
@@ -49,4 +90,53 @@
     </table>
   </div>
 </div>
+
+<script>
+(function () {
+  // "Other / custom reason" toggle: show the text box only when needed.
+  document.querySelectorAll('form[data-reason-form]').forEach(function (form) {
+    var sel = form.querySelector('.reason-select');
+    var custom = form.querySelector('.reason-custom');
+    if (!sel || !custom) return;
+    sel.addEventListener('change', function () {
+      var other = sel.value === 'OTHER';
+      custom.hidden = !other;
+      custom.required = other;
+    });
+  });
+
+  // One request at a time for the whole page. Once any form is submitted,
+  // every button shows a spinner / is disabled and further submits are
+  // ignored, so a double-click (or clicking another row) can't burn extra
+  // adjustments while the first request is still being processed.
+  var busy = false;
+  document.querySelectorAll('form[data-spin]').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      if (busy) { e.preventDefault(); return; }
+      busy = true;
+
+      // Only one of the two "reason" fields may be sent.
+      var sel = form.querySelector('.reason-select');
+      var custom = form.querySelector('.reason-custom');
+      if (sel && custom) {
+        if (sel.value === 'OTHER') { sel.removeAttribute('name'); } else { custom.removeAttribute('name'); }
+      }
+
+      var btn = form.querySelector('button[type=submit]');
+      var label = btn.querySelector('.btn-label');
+      if (label && btn.dataset.loadingText) { label.innerHTML = btn.dataset.loadingText; }
+      btn.classList.add('is-loading');
+      btn.setAttribute('aria-busy', 'true');
+
+      // Disable after the browser has captured the form data.
+      setTimeout(function () {
+        document.querySelectorAll('form[data-spin] button[type=submit]').forEach(function (b) { b.disabled = true; });
+      }, 0);
+    });
+  });
+
+  // Coming back via the browser's back button must not leave buttons frozen.
+  window.addEventListener('pageshow', function (e) { if (e.persisted) { window.location.reload(); } });
+})();
+</script>
 {% endblock %}

@@ -418,3 +418,25 @@ th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--co
   background: transparent;
 }
 
+/* Button spinner: shown while a form is being processed so the user can see
+   the request is in flight and can't submit it again. */
+.btn:disabled { opacity: .7; cursor: not-allowed; transform: none; }
+.btn-spinner {
+  display: none; width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: btn-spin .7s linear infinite;
+}
+.btn.is-loading .btn-spinner { display: inline-block; }
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+.quota-count { font-weight: 700; }
+.quota-count.quota-empty { color: var(--status-danger); }
+
+/* Dashboard chart pairs: two columns on wide screens (unchanged), but the
+   columns may shrink below the canvas' natural width, and they stack on
+   small screens instead of overflowing the page. */
+.chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.chart-grid > .card { min-width: 0; overflow: hidden; }
+.chart-grid canvas { max-width: 100%; }
+@media (max-width: 860px) {
+  .grid.chart-grid { grid-template-columns: minmax(0, 1fr); }
+}

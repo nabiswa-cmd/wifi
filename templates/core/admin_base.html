@@ -29,6 +29,10 @@
         Withdrawal Requests
         {% if pending_withdrawals_count %}<span class="sidebar-badge">{{ pending_withdrawals_count }}</span>{% endif %}
       </a>
+      <a href="{% url 'core:time_adjustment_requests_admin' %}" class="{% if request.resolver_match.url_name == 'time_adjustment_requests_admin' %}active{% endif %}">
+        Time Requests
+        {% if pending_time_requests_count %}<span class="sidebar-badge">{{ pending_time_requests_count }}</span>{% endif %}
+      </a>
       <a href="{% url 'core:voucher_approvals_admin' %}" class="{% if request.resolver_match.url_name == 'voucher_approvals_admin' %}active{% endif %}">
         Voucher Approvals
         {% if pending_voucher_batches_count %}<span class="sidebar-badge">{{ pending_voucher_batches_count }}</span>{% endif %}

@@ -125,6 +125,40 @@ class CustomerFeedback(models.Model):
         return f'{self.name or "Anonymous"} ({self.phone_number})   {self.created_at:%d %b %Y}'
 
 
+class TimeAdjustmentRequest(models.Model):
+    """
+    A shareholder who has used up their daily time-adjustment allowance
+    (see apps/core/time_adjustments.py) asks the Main Admin for more. The
+    Main Admin decides HOW MANY extra adjustments to grant; the grant is
+    only valid on the day it was approved (``valid_on``).
+    """
+    class Status(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        APPROVED = 'APPROVED', 'Approved'
+        DECLINED = 'DECLINED', 'Declined'
+
+    requester = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='time_adjustment_requests'
+    )
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
+    note = models.CharField(max_length=255, blank=True)
+    granted_count = models.PositiveSmallIntegerField(default=0)
+    valid_on = models.DateField(blank=True, null=True)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='decided_time_adjustment_requests',
+    )
+    decided_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'core_timeadjustmentrequest'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.requester} - {self.status} ({self.created_at:%d %b %Y %H:%M})'
+
+
 class Notification(models.Model):
     """
     Modular by design (Section 26): `channel` decides who eventually

@@ -980,11 +980,23 @@ def subscription_management(request):
     """Section 22: full subscription/entitlement history, never overwritten."""
     from apps.billing.models import Subscription
 
+    from apps.core import time_adjustments as ta
+
     qs = Subscription.objects.select_related('customer', 'package').order_by('-created_at')
     status_param = request.GET.get('status')
     if status_param:
         qs = qs.filter(status=status_param)
-    return render(request, 'core/subscriptions.html', {'subscriptions': qs[:200]})
+
+    is_main_admin = _is_main_admin(request.user)
+    return render(request, 'core/subscriptions.html', {
+        'subscriptions': qs[:200],
+        'is_main_admin': is_main_admin,
+        # Shareholders see their daily quota; the Main Admin has none.
+        'quota': None if is_main_admin else ta.allowance(request.user),
+        'today': timezone.localdate(),
+        'max_minutes': ta.MAX_MINUTES_PER_ADJUSTMENT,
+    })
+
 @login_required(login_url='core:admin_login')
 def voucher_management(request):
     """
@@ -1187,13 +1199,47 @@ def time_adjustments_log(request):
     """
     Visible to every logged-in staff account (Company, shareholders,
     and operational staff alike): every time someone added time to a
-    customer's subscription, who did it, and why (add_subscription_time
-    already writes each of these to AuditLog  this just displays them).
+    customer's subscription, who did it, which customer it was for, and
+    why (add_subscription_time already writes each of these to AuditLog
+    this just displays them).
+
+    Older rows were written before the customer was stored on the log
+    entry, so for those the customer is looked up from the subscription.
     """
+    from apps.billing.models import Subscription
     from apps.core.models import AuditLog
 
-    logs = AuditLog.objects.filter(action='ADMIN_TIME_ADJUSTMENT').select_related('actor').order_by('-created_at')[:200]
-    return render(request, 'core/time_adjustments.html', {'logs': logs})
+    logs = list(
+        AuditLog.objects.filter(action='ADMIN_TIME_ADJUSTMENT').select_related('actor').order_by('-created_at')[:200]
+    )
+    sub_ids = [int(log.object_id) for log in logs if (log.object_id or '').isdigit()]
+    subs = {
+        sub.id: sub
+        for sub in Subscription.objects.filter(id__in=sub_ids).select_related('customer')
+    }
+
+    rows = []
+    for log in logs:
+        details = log.new_value or {}
+        name = details.get('customer_name')
+        phone = details.get('customer_phone')
+        if not name:
+            sub = subs.get(int(log.object_id)) if (log.object_id or '').isdigit() else None
+            if sub is not None:
+                name, phone = sub.customer.full_name, sub.customer.phone_number
+        rows.append({'log': log, 'customer_name': name or '', 'customer_phone': phone or ''})
+
+    return render(request, 'core/time_adjustments.html', {'rows': rows})
+
+
+def _parse_local_datetime(date_str, time_str):
+    """'2026-10-05' + '14:30' -> aware datetime in the project timezone, or None."""
+    import datetime as dt
+    try:
+        naive = dt.datetime.strptime(f'{(date_str or "").strip()} {(time_str or "").strip()}', '%Y-%m-%d %H:%M')
+        return timezone.make_aware(naive)
+    except (ValueError, TypeError):
+        return None
 
 
 @login_required(login_url='core:admin_login')
@@ -1202,50 +1248,215 @@ def add_subscription_time(request, subscription_id):
     """
     Staff compensation tool: extend a customer's own real subscription
     without touching the original M-Pesa amount or creating a fake
-    payment. Logged via AuditLog for accountability   who added time, how
-    much, why, and the before/after expiry.
+    payment. Logged via AuditLog for accountability: who added time, for
+    which customer, how much, why, and the before/after expiry.
+
+    * Main Admin: picks the new expiry with a date + time selector. No limit.
+    * Everyone else (shareholders): adds a fixed number of minutes, at most
+      MAX_MINUTES_PER_ADJUSTMENT each, and at most DAILY_LIMIT per day
+      (plus anything the Main Admin has granted today). See
+      apps/core/time_adjustments.py.
     """
+    import datetime as dt
+    from django.db import transaction
+    from apps.accounts.models import User
     from apps.billing.models import Subscription
+    from apps.core import time_adjustments as ta
     from apps.core.models import AuditLog
 
-    subscription = get_object_or_404(Subscription, pk=subscription_id)
-    try:
-        minutes = int(request.POST.get('minutes', ''))
-    except (TypeError, ValueError):
-        minutes = 0
+    if _staff_role_name(request.user) is None:
+        return HttpResponse('Forbidden.', status=403)
+
+    is_admin = _is_main_admin(request.user)
     reason = request.POST.get('reason', '').strip()
     back = request.META.get('HTTP_REFERER') or reverse('core:subscriptions')
 
-    if minutes <= 0:
-        messages.error(request, 'Enter a positive number of minutes to add.')
-        return redirect(back)
     if not reason:
         messages.error(request, 'A reason is required for the audit log.')
         return redirect(back)
 
-    previous_expiry = subscription.expiry_time
-    base = previous_expiry if (previous_expiry and previous_expiry > timezone.now()) else timezone.now()
-    subscription.expiry_time = base + timezone.timedelta(minutes=minutes)
-    if subscription.status != Subscription.Status.ACTIVE:
-        subscription.status = Subscription.Status.ACTIVE
-    subscription.save(update_fields=['expiry_time', 'status', 'updated_at'])
+    with transaction.atomic():
+        # Serialise this person's adjustments: two requests arriving together
+        # must not both pass the daily-limit check.
+        User.objects.select_for_update().get(pk=request.user.pk)
 
-    AuditLog.objects.create(
-        actor=request.user, action='ADMIN_TIME_ADJUSTMENT',
-        object_type='Subscription', object_id=str(subscription.id),
-        previous_value={'expiry_time': previous_expiry.isoformat() if previous_expiry else None},
-        new_value={
-            'expiry_time': subscription.expiry_time.isoformat(),
-            'minutes_added': minutes, 'reason': reason,
-        },
-        ip_address=request.META.get('REMOTE_ADDR'),
-    )
+        subscription = get_object_or_404(Subscription.objects.select_related('customer'), pk=subscription_id)
+        now = timezone.now()
+        previous_expiry = subscription.expiry_time
+        base = previous_expiry if (previous_expiry and previous_expiry > now) else now
+
+        if is_admin:
+            new_expiry = _parse_local_datetime(request.POST.get('expiry_date'), request.POST.get('expiry_time'))
+            if new_expiry is None:
+                messages.error(request, 'Pick both a date and a time for the new expiry.')
+                return redirect(back)
+            if new_expiry <= base:
+                messages.error(
+                    request,
+                    f'The new expiry must be later than {timezone.localtime(base):%d %b %Y, %H:%M}.',
+                )
+                return redirect(back)
+            minutes = int((new_expiry - base).total_seconds() // 60)
+            if minutes <= 0:
+                messages.error(request, 'Choose a time at least one minute later than the current expiry.')
+                return redirect(back)
+            remaining_note = ''
+        else:
+            try:
+                minutes = int(request.POST.get('minutes', ''))
+            except (TypeError, ValueError):
+                minutes = 0
+            if minutes <= 0:
+                messages.error(request, 'Enter a positive number of minutes to add.')
+                return redirect(back)
+            if minutes > ta.MAX_MINUTES_PER_ADJUSTMENT:
+                messages.error(request, f'You can add at most {ta.MAX_MINUTES_PER_ADJUSTMENT} minutes (1 hour) at a time.')
+                return redirect(back)
+            quota = ta.allowance(request.user)
+            if quota['remaining'] <= 0:
+                messages.error(
+                    request,
+                    f"You have used all {quota['limit']} time adjustments for today. "
+                    'Use \u201cRequest more adjustments\u201d to ask the Company for more.',
+                )
+                return redirect(back)
+            new_expiry = base + dt.timedelta(minutes=minutes)
+            remaining_note = f" {quota['remaining'] - 1} of {quota['limit']} adjustments left today."
+
+        subscription.expiry_time = new_expiry
+        if subscription.status != Subscription.Status.ACTIVE:
+            subscription.status = Subscription.Status.ACTIVE
+        subscription.save(update_fields=['expiry_time', 'status', 'updated_at'])
+
+        AuditLog.objects.create(
+            actor=request.user, action='ADMIN_TIME_ADJUSTMENT',
+            object_type='Subscription', object_id=str(subscription.id),
+            previous_value={'expiry_time': previous_expiry.isoformat() if previous_expiry else None},
+            new_value={
+                'expiry_time': subscription.expiry_time.isoformat(),
+                'minutes_added': minutes, 'reason': reason,
+                'customer_id': subscription.customer_id,
+                'customer_name': subscription.customer.full_name,
+                'customer_phone': subscription.customer.phone_number,
+            },
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
 
     messages.success(
         request,
-        f'Added {minutes} min for {subscription.customer.full_name}   '
-        f'new expiry {timezone.localtime(subscription.expiry_time):%d %b, %H:%M}.',
+        f'Added {minutes} min for {subscription.customer.full_name}: '
+        f'new expiry {timezone.localtime(subscription.expiry_time):%d %b, %H:%M}.{remaining_note}',
     )
+    return redirect(back)
+
+
+@login_required(login_url='core:admin_login')
+@require_POST
+def request_more_time_adjustments(request):
+    """
+    A shareholder who has used today's whole allowance asks the Main Admin
+    for more. Only one request can be pending at a time.
+    """
+    from django.db import transaction
+    from apps.accounts.models import User
+    from apps.core import time_adjustments as ta
+    from apps.core.models import TimeAdjustmentRequest
+
+    if _staff_role_name(request.user) is None:
+        return HttpResponse('Forbidden.', status=403)
+    back = reverse('core:subscriptions')
+    if _is_main_admin(request.user):
+        messages.info(request, 'The Company has no daily limit on time adjustments.')
+        return redirect(back)
+
+    with transaction.atomic():
+        User.objects.select_for_update().get(pk=request.user.pk)
+        quota = ta.allowance(request.user)
+        if quota['remaining'] > 0:
+            messages.error(request, f"You still have {quota['remaining']} adjustment(s) left today.")
+        elif quota['pending_request'] is not None:
+            messages.info(request, 'Your request is already waiting for the Company.')
+        else:
+            TimeAdjustmentRequest.objects.create(
+                requester=request.user, note=(request.POST.get('note') or '').strip()[:255],
+            )
+            messages.success(request, 'Request sent. The Company will decide how many extra adjustments to give you.')
+    return redirect(back)
+
+
+@login_required(login_url='core:admin_login')
+def time_adjustment_requests_admin(request):
+    """Main-Admin-only: shareholders asking for more daily time adjustments."""
+    from apps.core import time_adjustments as ta
+    from apps.core.models import TimeAdjustmentRequest
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden.', status=403)
+
+    pending = list(
+        TimeAdjustmentRequest.objects.filter(status=TimeAdjustmentRequest.Status.PENDING)
+        .select_related('requester').order_by('created_at')
+    )
+    for item in pending:
+        item.used_today = ta.used_today(item.requester)
+        item.limit_today = ta.DAILY_LIMIT + ta.extra_granted_today(item.requester)
+
+    recent = (
+        TimeAdjustmentRequest.objects.exclude(status=TimeAdjustmentRequest.Status.PENDING)
+        .select_related('requester', 'decided_by').order_by('-decided_at')[:20]
+    )
+    return render(request, 'core/time_adjustment_requests.html', {
+        'pending_requests': pending,
+        'recent_requests': recent,
+        'max_grant': ta.MAX_GRANT_PER_REQUEST,
+    })
+
+
+@login_required(login_url='core:admin_login')
+@require_POST
+def decide_time_adjustment_request(request, request_id):
+    """Main-Admin-only: grant a chosen number of extra adjustments, or decline."""
+    from django.db import transaction
+    from apps.core import time_adjustments as ta
+    from apps.core.audit import log_action
+    from apps.core.models import TimeAdjustmentRequest
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden.', status=403)
+
+    back = reverse('core:time_adjustment_requests_admin')
+    action = request.POST.get('action')
+
+    with transaction.atomic():
+        item = get_object_or_404(
+            TimeAdjustmentRequest.objects.select_for_update(),
+            pk=request_id, status=TimeAdjustmentRequest.Status.PENDING,
+        )
+        if action == 'approve':
+            try:
+                count = int(request.POST.get('count', ''))
+            except (TypeError, ValueError):
+                count = 0
+            if not 1 <= count <= ta.MAX_GRANT_PER_REQUEST:
+                messages.error(request, f'Enter a number of adjustments between 1 and {ta.MAX_GRANT_PER_REQUEST}.')
+                return redirect(back)
+            item.status = TimeAdjustmentRequest.Status.APPROVED
+            item.granted_count = count
+            item.valid_on = timezone.localdate()
+            messages.success(request, f'Granted {count} extra adjustment(s) to {item.requester} for today.')
+        elif action == 'decline':
+            item.status = TimeAdjustmentRequest.Status.DECLINED
+            messages.success(request, f'Declined the request from {item.requester}.')
+        else:
+            messages.error(request, 'Unknown action.')
+            return redirect(back)
+
+        item.decided_by = request.user
+        item.decided_at = timezone.now()
+        item.save()
+        log_action(request.user, f'TIME_ADJUSTMENT_REQUEST_{item.status}', item,
+                   new_value={'requester': str(item.requester), 'granted_count': item.granted_count})
+
     return redirect(back)
 
 

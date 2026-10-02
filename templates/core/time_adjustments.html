@@ -10,20 +10,21 @@
   </p>
   <table style="width:100%;">
     <thead>
-      <tr><th style="text-align:left;">Added by</th><th>Subscription</th><th>Minutes</th><th>Reason</th><th>New Expiry</th><th>When</th></tr>
+      <tr><th style="text-align:left;">Added by</th><th>Customer</th><th>Subscription</th><th>Minutes</th><th>Reason</th><th>New Expiry</th><th>When</th></tr>
     </thead>
     <tbody>
-      {% for log in logs %}
+      {% for row in rows %}
       <tr>
-        <td data-label="Added by">{{ log.actor }}</td>
-        <td data-label="Subscription">#{{ log.object_id }}</td>
-        <td data-label="Minutes">{{ log.new_value.minutes_added }}</td>
-        <td data-label="Reason">{{ log.new_value.reason }}</td>
-        <td data-label="New Expiry">{{ log.new_value.expiry_time }}</td>
-        <td data-label="When">{{ log.created_at|date:"d M Y H:i" }}</td>
+        <td data-label="Added by">{{ row.log.actor }}</td>
+        <td data-label="Customer">{% if row.customer_name %}{{ row.customer_name }}{% if row.customer_phone %} <span style="color:var(--color-text-muted); font-size:.8rem;">({{ row.customer_phone }})</span>{% endif %}{% else %}&mdash;{% endif %}</td>
+        <td data-label="Subscription">#{{ row.log.object_id }}</td>
+        <td data-label="Minutes">{{ row.log.new_value.minutes_added }}</td>
+        <td data-label="Reason">{{ row.log.new_value.reason }}</td>
+        <td data-label="New Expiry">{{ row.log.new_value.expiry_time }}</td>
+        <td data-label="When">{{ row.log.created_at|date:"d M Y H:i" }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="6">No time adjustments recorded yet.</td></tr>
+      <tr><td colspan="7">No time adjustments recorded yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>

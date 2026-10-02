@@ -39,8 +39,12 @@ def admin_action_badges(request):
     if profile is None or not profile.is_active_staff or profile.role.name != 'SUPER_ADMIN':
         return {}
     from apps.billing.models import WithdrawalRequest
+    from apps.core.models import TimeAdjustmentRequest
     from apps.vouchers.models import VoucherBatch
     return {
+        'pending_time_requests_count': TimeAdjustmentRequest.objects.filter(
+            status=TimeAdjustmentRequest.Status.PENDING
+        ).count(),
         'pending_withdrawals_count': WithdrawalRequest.objects.filter(
             status=WithdrawalRequest.Status.PENDING
         ).count(),
