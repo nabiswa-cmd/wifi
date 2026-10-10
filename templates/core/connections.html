@@ -1,0 +1,81 @@
+{% extends "core/admin_base.html" %}
+{% block title %}Connections &middot; {{ branding.business_name }}{% endblock %}
+{% block admin_title %}Connections{% endblock %}
+{% block admin_content %}
+
+<div class="chip-row" aria-label="Connection groups">
+  {% for c in chips %}
+  <a class="chip {% if c.active %}active{% endif %}" href="{{ c.href }}">{{ c.label }} <span class="chip-count">{{ c.count }}</span></a>
+  {% endfor %}
+</div>
+
+{% if messages %}
+<div style="margin-top:12px;">
+  {% for m in messages %}<div class="card" style="margin-bottom:8px; padding:10px 14px;"><span class="{% if m.tags == 'error' %}badge-danger{% elif m.tags == 'success' %}badge-success{% else %}badge-warning{% endif %}">{{ m }}</span></div>{% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:12px;">
+  <h3 style="margin:0;">Customers <span class="list-count">{{ total_found }}</span></h3>
+
+  <form method="get" class="filter-bar">
+    <input type="hidden" name="filter" value="{{ filter_key }}">
+    <div class="search-box"><i class="bi bi-search" aria-hidden="true"></i>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search name, phone, M-Pesa code or package"></div>
+    <button class="btn" type="submit">Search</button>
+    {% if q %}<a class="btn btn-secondary" href="?filter={{ filter_key }}">Clear</a>{% endif %}
+  </form>
+
+  <table style="width:100%;">
+    <thead>
+      <tr><th style="text-align:left;">Customer</th><th>Package</th><th>Time</th><th>Device</th>{% if can_act %}<th>Action</th>{% endif %}</tr>
+    </thead>
+    <tbody>
+      {% for s in rows %}
+      <tr>
+        <td data-label="Customer">
+          <strong>{{ s.customer.full_name }}</strong>
+          <div class="cust-sub">{{ s.customer.phone_number }}</div>
+        </td>
+        <td data-label="Package">
+          {{ s.package.name }}
+          <div class="cust-sub">{{ s.source_label }}{% if s.paid_ago %} &middot; {{ s.paid_ago|lower }}{% endif %}</div>
+        </td>
+        <td data-label="Time">
+          {% if s.is_paused %}<span class="cust-sub">Paused. Time is kept.</span>
+          {% else %}until {{ s.expiry_time|date:"d M, H:i" }}{% endif %}
+        </td>
+        <td data-label="Device">
+          {% if s.is_paused %}<span class="conn-badge badge-danger">Paused by staff</span>
+          {% elif s.is_online %}<span class="conn-badge badge-success">Online</span>
+          {% else %}<span class="conn-badge badge-warning">{% if s.voucher_id and not s.payment_id %}Voucher{% else %}Paid{% endif %} &middot; not connected</span>{% endif %}
+          {% if s.mac %}<div class="cust-sub">{{ s.mac }}</div>{% endif %}
+        </td>
+        {% if can_act %}
+        <td data-label="Action">
+          <div class="conn-actions">
+            {% if s.can_connect and not s.is_online %}
+            <form method="post" action="{% url 'core:connection_connect' s.id %}">
+              {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+              {% if not s.mac %}<input type="text" name="mac" placeholder="AA:BB:CC:DD:EE:FF" aria-label="Device MAC address">{% endif %}
+              <button class="btn" type="submit"><i class="bi bi-plug-fill" aria-hidden="true"></i> {% if s.is_paused %}Reconnect{% else %}Connect{% endif %}</button>
+            </form>
+            {% endif %}
+            {% if not s.is_paused %}
+            <form method="post" action="{% url 'core:connection_disconnect' s.id %}" onsubmit="return confirm('Disconnect {{ s.customer.full_name|escapejs }} and pause their package? Their device is cut off now and they cannot reconnect themselves until you press Reconnect.');">
+              {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <button class="btn btn-danger-outline" type="submit"><i class="bi bi-power" aria-hidden="true"></i> Disconnect</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+        {% endif %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="{% if can_act %}5{% else %}4{% endif %}">{% if filter_key == 'unconnected' %}Everyone who paid is connected.{% else %}Nothing here.{% endif %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% include "core/_pager.html" %}
+</div>
+{% endblock %}

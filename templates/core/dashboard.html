@@ -14,6 +14,7 @@
   {% include "core/_stat_tile.html" with icon="bi-broadcast" tone="purple" label="Online Users" value=online_users href=tile_links.customers_online %}
   {% include "core/_stat_tile.html" with icon="bi-person-x-fill" tone="red" label="Expired Customers" value=expired_customers href=tile_links.customers_expired %}
   {% include "core/_stat_tile.html" with icon="bi-clock-history" tone="amber" label="Lapsed Customers" value=lapsed_customers href=tile_links.customers_lapsed %}
+  {% include "core/_stat_tile.html" with icon="bi-wifi-off" tone="red" label="Paid, not connected" value=unconnected_paid href=tile_links.connections_unconnected %}
 </div>
 
 <h4 class="tile-section">Today</h4>

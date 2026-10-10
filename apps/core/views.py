@@ -71,6 +71,7 @@ def dashboard(request):
     from datetime import timedelta
     from apps.customers.models import Customer
     from apps.billing.models import Payment, Subscription
+    from apps.core import connections as conn
     from apps.core import customer_insights as insights
     from apps.mikrotik.models import InternetSession
 
@@ -129,6 +130,7 @@ def dashboard(request):
         'expired_customers': insights.count('expired'),
         'online_users': insights.count('online'),
         'lapsed_customers': insights.count('lapsed'),
+        'unconnected_paid': conn.count('unconnected'),
         'todays_revenue': revenue_today,
         'todays_payments': payments_today.count(),
         'successful_payments': payments_today.filter(status=Payment.Status.SUCCESS).count(),
@@ -148,6 +150,7 @@ def dashboard(request):
             'customers_online': _link('core:customer_list', filter='online'),
             'customers_expired': _link('core:customer_list', filter='expired'),
             'customers_lapsed': _link('core:customer_list', filter='lapsed'),
+            'connections_unconnected': _link('core:connections', filter='unconnected'),
             'customers_today': _link('core:customer_list', filter='connected_today'),
             'pay_revenue': _link('core:payments', status='SUCCESS', date_from=today.isoformat(), date_to=today.isoformat()),
             'pay_all': _link('core:payments', date_from=today.isoformat(), date_to=today.isoformat()),
@@ -1853,3 +1856,90 @@ def fup_monitor(request):
         'has_any_usage': InternetSession.objects.filter(last_usage_at__isnull=False).exists(),
         'agent_last_seen': router.last_checked_at if router else None,
     })
+
+
+# ---------------------------------------------------------------------------
+# Connections: connect / disconnect a customer from the admin portal
+# ---------------------------------------------------------------------------
+@login_required(login_url='core:admin_login')
+def connections(request):
+    """
+    Customers who have time on a package, with a badge for the ones who paid
+    but are not connected, and (Main Admin only) Connect / Disconnect buttons.
+    """
+    from urllib.parse import urlencode
+    from django.core.paginator import Paginator
+    from apps.core import connections as conn
+    from apps.core import customer_insights as insights
+
+    if _staff_role_name(request.user) is None:
+        return HttpResponse('Forbidden.', status=403)
+
+    now = timezone.now()
+    key = request.GET.get('filter') or 'unconnected'
+    if key not in conn.FILTERS:
+        key = 'unconnected'
+    q = (request.GET.get('q') or '').strip()
+
+    qs = conn.subscriptions(key, now)
+    if q:
+        qs = qs.filter(
+            Q(customer__full_name__icontains=q) | Q(customer__phone_number__icontains=q)
+            | Q(payment__mpesa_receipt_number__icontains=q) | Q(package__name__icontains=q)
+        )
+
+    page = Paginator(qs, 50).get_page(request.GET.get('page'))
+    rows = list(page.object_list)
+    for sub in rows:
+        sub.mac = conn.known_mac(sub)
+        sub.paid_ago = insights.ago(sub.activation_time, now)
+        sub.is_paused = sub.status == 'SUSPENDED'
+        sub.can_connect = bool(sub.payment_id or sub.voucher_id)
+        sub.source_label = (sub.payment.mpesa_receipt_number if sub.payment_id and sub.payment.mpesa_receipt_number
+                            else 'Voucher' if sub.voucher_id else 'Added by staff')
+
+    def href(**over):
+        data = {'filter': key, 'q': q}
+        data.update(over)
+        data = {k: v for k, v in data.items() if v and not (k == 'filter' and v == 'unconnected')}
+        return f"{reverse('core:connections')}{'?' + urlencode(data) if data else ''}"
+
+    chips = [{'key': k, 'label': label, 'active': k == key, 'count': conn.count(k, now), 'href': href(filter=k, page='')}
+             for k, label in conn.FILTERS.items()]
+
+    return render(request, 'core/connections.html', {
+        'rows': rows, 'page_obj': page, 'chips': chips, 'q': q, 'filter_key': key,
+        'base_qs': urlencode({k: v for k, v in {'filter': key, 'q': q}.items() if v}),
+        'total_found': page.paginator.count,
+        'can_act': _is_main_admin(request.user),
+    })
+
+
+def _connection_back(request):
+    return request.POST.get('next') or reverse('core:connections')
+
+
+@login_required(login_url='core:admin_login')
+@require_POST
+def connection_connect(request, subscription_id):
+    from apps.core import connections as conn
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden.', status=403)
+    ok, msg = conn.connect(subscription_id, request.user, mac=request.POST.get('mac', ''),
+                           ip=request.META.get('REMOTE_ADDR'))
+    (messages.success if ok else messages.error)(request, msg)
+    return redirect(_connection_back(request))
+
+
+@login_required(login_url='core:admin_login')
+@require_POST
+def connection_disconnect(request, subscription_id):
+    from apps.core import connections as conn
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden.', status=403)
+    ok, msg = conn.disconnect(subscription_id, request.user, reason=request.POST.get('reason', '').strip(),
+                              ip=request.META.get('REMOTE_ADDR'))
+    (messages.success if ok else messages.error)(request, msg)
+    return redirect(_connection_back(request))

@@ -19,6 +19,7 @@
       <a href="{% url 'core:payments' %}" class="{% if request.resolver_match.url_name == 'payments' %}active{% endif %}">Payments</a>
       <a href="{% url 'core:customer_list' %}" class="{% if request.resolver_match.url_name == 'customer_list' %}active{% endif %}">Customers</a>
       <a href="{% url 'core:subscriptions' %}" class="{% if request.resolver_match.url_name == 'subscriptions' %}active{% endif %}">Subscriptions</a>
+      <a href="{% url 'core:connections' %}" class="{% if request.resolver_match.url_name == 'connections' %}active{% endif %}">Connections</a>
       <a href="{% url 'core:packages' %}" class="{% if request.resolver_match.url_name == 'packages' %}active{% endif %}">Packages</a>
       <a href="{% url 'core:fup_monitor' %}" class="{% if request.resolver_match.url_name == 'fup_monitor' %}active{% endif %}">Usage &amp; FUP</a>
       <a href="{% url 'core:time_adjustments_log' %}" class="{% if request.resolver_match.url_name == 'time_adjustments_log' %}active{% endif %}">Time Adjustments Log</a>
@@ -102,7 +103,7 @@
   .admin-sidebar nav a {
     padding: 11px 16px; color: #c9c9c9; text-decoration: none; font-size: .85rem;
   }
-  .admin-sidebar nav a:hover, .admin-sidebar nav a.active { background: var(--color-primary); color: #1c2410; }
+  .admin-sidebar nav a:hover, .admin-sidebar nav a.active { background: var(--color-primary); color: var(--color-on-primary); }
   .sidebar-badge {
     display: inline-block; min-width: 18px; padding: 1px 6px; margin-left: 6px;
     border-radius: 999px; background: var(--status-danger); color: #fff;
@@ -193,7 +194,7 @@
     border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); text-decoration: none;
   }
   .chip:hover { border-color: var(--color-primary); }
-  .chip.active { background: var(--color-primary); color: #1c2410; border-color: var(--color-primary); font-weight: 700; }
+  .chip.active { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); font-weight: 700; }
   .chip-count { font-weight: 700; opacity: .75; }
   @media (max-width: 640px) { .chip-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; } }
   .list-head { display: flex; gap: 12px; align-items: center; }
@@ -209,6 +210,11 @@
   .pill-cooling { color: var(--status-warning); }
   .pill-lapsed { color: var(--status-danger); }
   .pill-never { color: var(--color-text-muted); }
+  .conn-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .conn-actions form { display: flex; gap: 6px; align-items: center; margin: 0; }
+  .conn-actions input[type=text] { width: 150px; padding: 6px 8px; font-size: .8rem; margin: 0; }
+  .btn-danger-outline { background: transparent; color: var(--status-danger); border: 1px solid var(--status-danger); }
+  .conn-badge { display: inline-block; font-size: .75rem; font-weight: 700; }
   .pager { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; }
   .pager-info { font-size: .8rem; color: var(--color-text-muted); }
 
