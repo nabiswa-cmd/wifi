@@ -214,6 +214,20 @@
   // this device so the agent knows which MAC to bypass on the router.
   const HOTSPOT_MAC = '{{ hotspot_mac|escapejs }}';
 
+  // Remember the customer's M-Pesa number on THIS device only (never sent anywhere
+  // except with the payment itself) so the next prompt is already filled in.
+  const PHONE_KEY = 'nabiswa_last_phone';
+  function getSavedPhone() {
+    try { return window.localStorage.getItem(PHONE_KEY) || ''; } catch (e) { return ''; }
+  }
+  function savePhone(normalized) {
+    try { window.localStorage.setItem(PHONE_KEY, '0' + normalized.slice(3)); } catch (e) { /* private mode */ }
+  }
+  ['voucher-phone-input', 'feedback-phone-input'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el && !el.value) el.value = getSavedPhone();
+  });
+
   let currentPackageId = null;
   let pollTimer = null;
   const POLL_INTERVAL_MS = 2500;
@@ -257,11 +271,11 @@
   function openModal(packageId, packageName) {
     currentPackageId = packageId;
     packageNameEl.textContent = 'Buy ' + packageName;
-    phoneInput.value = '';
+    phoneInput.value = getSavedPhone();
     phoneError.hidden = true;
     showStep('phone');
     overlay.hidden = false;
-    setTimeout(() => phoneInput.focus(), 50);
+    setTimeout(() => { phoneInput.focus(); if (phoneInput.value) phoneInput.select(); }, 50);
   }
 
   function closeModal() {
@@ -285,6 +299,7 @@
       return;
     }
     phoneError.hidden = true;
+    savePhone(normalized);
 
     // Phase 1: actively sending the request (short dot-pulse).
     showStep('sending');

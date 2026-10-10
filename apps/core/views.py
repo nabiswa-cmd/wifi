@@ -1816,6 +1816,7 @@ def update_package_price(request, package_id):
 # ---------------------------------------------------------------------------
 @login_required(login_url='core:admin_login')
 def fup_monitor(request):
+    from apps.core import data_cap
     from apps.billing import fup
     from apps.billing.models import FUPAlert
     from apps.mikrotik.models import InternetSession, MikroTikRouter
@@ -1854,6 +1855,7 @@ def fup_monitor(request):
         'selected': selected,
         'recent_alerts': alerts,
         'has_any_usage': InternetSession.objects.filter(last_usage_at__isnull=False).exists(),
+        'cap': data_cap.summary(now),
         'agent_last_seen': router.last_checked_at if router else None,
     })
 

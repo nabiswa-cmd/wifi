@@ -1,0 +1,20 @@
+{% comment %}Plan data usage vs the Safaricom cap. Context: cap (from apps.core.data_cap.summary).{% endcomment %}
+<div class="card" style="margin-bottom:12px;">
+  <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; align-items:baseline;">
+    <h3 style="margin:0;">Plan data used</h3>
+    <span class="cust-sub">Cycle {{ cap.start|date:"d M" }} &ndash; {{ cap.end|date:"d M" }}</span>
+  </div>
+  <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-top:6px;">
+    <span style="font-size:1.8rem; font-weight:700;">{{ cap.used_h }}</span>
+    <span class="cust-sub">of {{ cap.cap_h }} &middot; {{ cap.percent }}%</span>
+  </div>
+  <div class="fup-bar {% if cap.percent >= 100 %}fup-REACHED{% elif cap.percent >= 85 %}fup-HIGH{% elif cap.percent >= 70 %}fup-APPROACHING{% else %}fup-NORMAL{% endif %}" style="margin:8px 0; width:100%;">
+    <span style="width:{{ cap.bar_percent }}%;"></span>
+  </div>
+  <div class="cust-sub">
+    Downloaded {{ cap.down_h }} &middot; Uploaded {{ cap.up_h }} &middot;
+    {% if cap.over %}<strong class="badge-danger">Over the cap</strong>{% else %}{{ cap.remaining_h }} left{% endif %}
+    &middot; {{ cap.days_left }} day{{ cap.days_left|pluralize }} until renewal{% if cap.per_day_h and not cap.over %} &middot; about {{ cap.per_day_h }} a day available{% endif %}
+  </div>
+  <div class="cust-sub" style="margin-top:4px;">All time (since the agent began reporting): {{ cap.all_time_h }}. Customer devices only; Safaricom&rsquo;s own meter also counts the router and anything else on the line.</div>
+</div>

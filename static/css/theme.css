@@ -25,7 +25,7 @@
   --status-danger: #D64545;
   --status-info: #3A9AD4;
 
-  --bg-image: url("/static/images/5883.jpg");
+  --bg-image: url("/static/images/bg-light.webp");
 }
 
 [data-theme="dark"] {
@@ -53,7 +53,7 @@
   --color-accent-alt-1: #1B0F0A;
   --color-accent-alt-2: #4A2411;
 
-  --bg-image: url("/static/images/paradise.jpg");
+  --bg-image: url("/static/images/bg-dark.webp");
 }
 
 * { box-sizing: border-box; }
@@ -423,3 +423,11 @@ th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--co
   background: transparent;
 }
 
+/* Fast backgrounds: small WebP files, even smaller ones on phones, and a solid
+   colour shown instantly while the picture downloads. */
+body { background-color: var(--color-bg); }
+@media (max-width: 800px) {
+  :root,
+  [data-theme="light"] { --bg-image: url("/static/images/bg-light-sm.webp"); }
+  [data-theme="dark"] { --bg-image: url("/static/images/bg-dark-sm.webp"); }
+}

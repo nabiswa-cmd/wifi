@@ -24,6 +24,8 @@
   </div>
   {% endif %}
 
+  {% include "core/_data_cap.html" %}
+
   <div class="tile-grid" style="margin-bottom:12px;">
     {% include "core/_stat_tile.html" with icon="bi-wifi" tone="blue" label="Online now" value=counts.online href="?filter=online" %}
     {% include "core/_stat_tile.html" with icon="bi-exclamation-circle" tone="amber" label="Approaching (70-84%)" value=counts.APPROACHING href="?filter=APPROACHING" %}
