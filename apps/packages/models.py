@@ -41,6 +41,12 @@ class InternetPackage(models.Model):
     upload_speed_kbps = models.PositiveIntegerField(blank=True, null=True)
     data_allowance_mb = models.PositiveIntegerField(blank=True, null=True)
     unlimited_data = models.BooleanField(default=True)
+    # Fair-usage threshold used ONLY for monitoring/warnings (see apps/billing/fup.py).
+    # Nothing is throttled or disconnected when it is reached. Blank = no FUP limit.
+    fup_limit_mb = models.PositiveIntegerField(
+        blank=True, null=True,
+        help_text='Fair-usage limit in MB (1 MB = 1,048,576 bytes) for monitoring and warnings only. Leave blank for none.',
+    )
     device_limit = models.PositiveSmallIntegerField(default=1)
 
     is_active = models.BooleanField(default=True)

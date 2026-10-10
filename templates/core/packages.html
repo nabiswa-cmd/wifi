@@ -1,0 +1,53 @@
+{% extends "core/admin_base.html" %}
+{% block admin_title %}Packages{% endblock %}
+{% block admin_content %}
+<div style="padding:20px;">
+  <h2>Packages</h2>
+
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Package</th><th>Time</th><th>Speed (down / up)</th><th>Data</th><th>Devices</th>
+          <th>Status</th><th>Price ({{ branding.currency }})</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in packages %}
+        <tr>
+          <td data-label="Package">{{ p.name }}{% if p.is_featured %} <span class="badge badge-info">Featured</span>{% endif %}</td>
+          <td data-label="Time">{{ p.duration }} {{ p.get_duration_unit_display|lower }}</td>
+          <td data-label="Speed">
+            {% if p.download_speed_kbps %}{{ p.download_speed_kbps }} / {{ p.upload_speed_kbps|default:"-" }} kbps{% else %}Profile default{% endif %}
+          </td>
+          <td data-label="Data">
+            {% if p.unlimited_data %}Unlimited{% elif p.data_allowance_mb %}{{ p.data_allowance_mb }} MB{% else %}-{% endif %}
+            {% if p.fup_limit_mb %}<div class="cust-sub">FUP {{ p.fup_limit_mb }} MB</div>{% endif %}
+          </td>
+          <td data-label="Devices">{{ p.device_limit }}</td>
+          <td data-label="Status"><span class="badge {% if p.is_active %}badge-success{% else %}badge-danger{% endif %}">{% if p.is_active %}Active{% else %}Disabled{% endif %}</span></td>
+          <td data-label="Price">
+            {% if can_edit_price %}
+            <form method="post" action="{% url 'core:update_package_price' p.id %}" data-spin
+                  style="display:flex; gap:6px; align-items:center; margin:0;">
+              {% csrf_token %}
+              <input type="number" name="price" value="{{ p.price|stringformat:'.2f' }}" min="0.01" max="100000" step="0.01"
+                     required aria-label="Price for {{ p.name }}" style="margin:0; padding:6px; width:110px; font-size:.85rem;">
+              <button class="btn" type="submit" data-loading-text="Saving&hellip;" style="padding:7px 12px; font-size:.8rem;">
+                <span class="btn-spinner" aria-hidden="true"></span><span class="btn-label">Save price</span>
+              </button>
+            </form>
+            {% else %}
+              <strong>{{ p.price|floatformat:2 }}</strong>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7">No packages have been created yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

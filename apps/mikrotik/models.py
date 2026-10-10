@@ -140,6 +140,13 @@ class InternetSession(models.Model):
     logout_time = models.DateTimeField(blank=True, null=True)
     bytes_uploaded = models.BigIntegerField(default=0)
     bytes_downloaded = models.BigIntegerField(default=0)
+    # FUP monitoring (apps/billing/fup.py). bytes_* above are the accumulated totals;
+    # last_counter_* remember the router's own running counters at the previous sample so
+    # only the DIFFERENCE is added each time. NULL = never sampled yet.
+    last_counter_in = models.BigIntegerField(blank=True, null=True)
+    last_counter_out = models.BigIntegerField(blank=True, null=True)
+    # Last time the router's own host table listed this device (NOT inferred from billing data).
+    last_usage_at = models.DateTimeField(blank=True, null=True)
 
     class Status(models.TextChoices):
         ACTIVE = 'ACTIVE', 'Active'

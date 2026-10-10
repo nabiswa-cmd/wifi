@@ -1,0 +1,102 @@
+{% extends "core/admin_base.html" %}
+{% block admin_title %}Usage &amp; FUP{% endblock %}
+{% block admin_content %}
+<style>
+  .fup-bar { height: 8px; min-width: 90px; border-radius: 4px; background: var(--color-border); overflow: hidden; }
+  .fup-bar > span { display: block; height: 100%; }
+  .fup-NORMAL > span { background: var(--status-success, #22c55e); }
+  .fup-APPROACHING > span { background: var(--status-warning, #f59e0b); }
+  .fup-HIGH > span { background: #f97316; }
+  .fup-REACHED > span { background: var(--status-danger, #ef4444); }
+  .badge-high { background: #f97316; color: #fff; }
+</style>
+<div style="padding:20px;">
+  <h2>Usage &amp; FUP</h2>
+  <p class="list-meaning" style="margin:0 0 12px;">
+    Monitoring only: nobody is disconnected or slowed down. 
+    {% if agent_last_seen %}Agent last reported {{ agent_last_seen|timesince }} ago.{% else %}The agent has not reported yet.{% endif %}
+  </p>
+
+  {% if not has_any_usage %}
+  <div class="card" style="margin-bottom:12px;">
+    <strong>No usage data received yet.</strong>
+    <div class="cust-sub">Update and restart the on-site agent so it reports device counters. Until then every usage figure below is blank rather than estimated.</div>
+  </div>
+  {% endif %}
+
+  <div class="tile-grid" style="margin-bottom:12px;">
+    {% include "core/_stat_tile.html" with icon="bi-wifi" tone="blue" label="Online now" value=counts.online href="?filter=online" %}
+    {% include "core/_stat_tile.html" with icon="bi-exclamation-circle" tone="amber" label="Approaching (70-84%)" value=counts.APPROACHING href="?filter=APPROACHING" %}
+    {% include "core/_stat_tile.html" with icon="bi-exclamation-triangle" tone="purple" label="High usage (85-99%)" value=counts.HIGH href="?filter=HIGH" %}
+    {% include "core/_stat_tile.html" with icon="bi-x-octagon" tone="red" label="FUP reached (100%+)" value=counts.REACHED href="?filter=REACHED" %}
+  </div>
+
+  <div class="chip-row" style="margin-bottom:10px;">
+    <a class="chip {% if not selected %}active{% endif %}" href="{% url 'core:fup_monitor' %}">All active <span class="chip-count">{{ counts.all }}</span></a>
+    <a class="chip {% if selected == 'online' %}active{% endif %}" href="?filter=online">Online now <span class="chip-count">{{ counts.online }}</span></a>
+    <a class="chip {% if selected == 'APPROACHING' %}active{% endif %}" href="?filter=APPROACHING">Approaching <span class="chip-count">{{ counts.APPROACHING }}</span></a>
+    <a class="chip {% if selected == 'HIGH' %}active{% endif %}" href="?filter=HIGH">High <span class="chip-count">{{ counts.HIGH }}</span></a>
+    <a class="chip {% if selected == 'REACHED' %}active{% endif %}" href="?filter=REACHED">Reached <span class="chip-count">{{ counts.REACHED }}</span></a>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>Customer</th><th>Package</th><th>Online</th><th>Downloaded</th><th>Uploaded</th><th>Total</th><th>FUP</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td data-label="Customer">{{ r.customer.full_name }}<div class="cust-sub">{{ r.customer.phone_number }}</div></td>
+          <td data-label="Package">{{ r.package.name }}<div class="cust-sub">Expires {{ r.subscription.expiry_time|date:"d M H:i" }}</div></td>
+          <td data-label="Online">
+            {% if r.online %}<span class="online-dot"><i class="bi bi-circle-fill" aria-hidden="true"></i> Online</span>
+            {% elif r.has_data %}<span class="cust-sub">Seen {{ r.last_seen|timesince }} ago</span>
+            {% else %}<span class="cust-sub">No data</span>{% endif %}
+          </td>
+          <td data-label="Downloaded">{% if r.has_data %}{{ r.down_h }}{% else %}-{% endif %}</td>
+          <td data-label="Uploaded">{% if r.has_data %}{{ r.up_h }}{% else %}-{% endif %}</td>
+          <td data-label="Total">{% if r.has_data %}<strong>{{ r.used_h }}</strong>{% else %}-{% endif %}</td>
+          <td data-label="FUP">
+            {% if r.limit_mb %}
+              {% if r.has_data %}
+              <div class="fup-bar fup-{{ r.status }}" role="progressbar" aria-valuenow="{{ r.bar_percent|floatformat:0 }}" aria-valuemin="0" aria-valuemax="100"><span style="width:{{ r.bar_percent|floatformat:0 }}%"></span></div>
+              <div class="cust-sub">{{ r.percent|floatformat:0 }}% of {{ r.limit_mb }} MB</div>
+              {% else %}<div class="cust-sub">Limit {{ r.limit_mb }} MB</div>{% endif %}
+            {% else %}<span class="cust-sub">No limit set</span>{% endif %}
+          </td>
+          <td data-label="Status">
+            {% if not r.limit_mb %}<span class="badge badge-info">No FUP limit</span>
+            {% elif not r.has_data %}<span class="badge badge-info">No data yet</span>
+            {% elif r.status == 'NORMAL' %}<span class="badge badge-success">Normal</span>
+            {% elif r.status == 'APPROACHING' %}<span class="badge badge-warning">Approaching FUP</span>
+            {% elif r.status == 'HIGH' %}<span class="badge badge-high">High usage</span>
+            {% else %}<span class="badge badge-danger">FUP reached</span>{% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8">{% if selected %}Nobody matches this filter right now.{% else %}No customers have an active package right now.{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin:18px 0 8px;">Recent warnings</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th>When</th><th>Customer</th><th>Package</th><th>Crossed</th><th>Usage at the time</th></tr></thead>
+      <tbody>
+        {% for a in recent_alerts %}
+        <tr>
+          <td data-label="When">{{ a.created_at|date:"d M H:i" }}</td>
+          <td data-label="Customer">{{ a.subscription.customer.full_name }}<div class="cust-sub">{{ a.subscription.customer.phone_number }}</div></td>
+          <td data-label="Package">{{ a.subscription.package.name }}</td>
+          <td data-label="Crossed"><span class="badge {% if a.threshold == 100 %}badge-danger{% elif a.threshold == 85 %}badge-high{% else %}badge-warning{% endif %}">{{ a.get_threshold_display }}</span></td>
+          <td data-label="Usage">{{ a.usage_h }} of {{ a.limit_mb }} MB</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">No customer has crossed a threshold yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -11,7 +11,7 @@ class PackageProfileAdmin(admin.ModelAdmin):
 @admin.register(InternetPackage)
 class InternetPackageAdmin(admin.ModelAdmin):
     list_display = (
-        'name', 'price', 'duration', 'duration_unit', 'device_limit',
+        'name', 'price', 'duration', 'duration_unit', 'device_limit', 'fup_limit_mb',
         'is_active', 'is_featured', 'display_order', 'router_profile_status',
     )
     list_filter = ('is_active', 'is_featured', 'duration_unit')

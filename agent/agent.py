@@ -65,6 +65,13 @@ HTTP_TIMEOUT = float(os.environ.get('AGENT_HTTP_TIMEOUT', LONG_POLL_WAIT + 10))
 
 HEADERS = {'Authorization': f'Bearer {AGENT_API_KEY}', 'Content-Type': 'application/json'}
 
+# FUP monitoring: how often to read per-device byte counters from the router. This is ONE
+# read-only print of the (tiny) hotspot host table per interval, piggybacked on the heartbeat
+# that is already being sent. Set AGENT_USAGE_INTERVAL=0 to switch usage reporting off.
+USAGE_INTERVAL = float(os.environ.get('AGENT_USAGE_INTERVAL', '60'))
+_last_usage_read = 0.0
+_warned_no_counters = False
+
 
 # --- RouterOS helpers ---------------------------------------------------
 def connect_router():
@@ -215,8 +222,29 @@ def report_job(job_id, status, detail=''):
                    data=json.dumps({'status': status, 'detail': detail}))
 
 
+def read_host_usage(api):
+    """
+    Per-device running byte counters from /ip/hotspot/host (read-only; includes devices let in by
+    ip-binding bypass, which never appear under /ip/hotspot/active). bytes-in is traffic received
+    FROM the device (its upload); bytes-out is what was sent TO it (its download).
+    """
+    global _warned_no_counters
+    rows = []
+    for r in api.path('ip', 'hotspot', 'host'):
+        mac = r.get('mac-address')
+        if mac and r.get('bytes-in') is not None and r.get('bytes-out') is not None:
+            rows.append({'mac_address': mac, 'bytes_in': r.get('bytes-in'), 'bytes_out': r.get('bytes-out')})
+    if not rows and not _warned_no_counters:
+        _warned_no_counters = True
+        log.warning('Hotspot host table returned no byte counters; FUP usage will stay empty. '
+                    'Check "/ip hotspot host print detail" on the router.')
+    return rows
+
+
 def send_heartbeat(api):
+    global _last_usage_read
     active_users, active_sessions = [], []
+    host_usage = None
     try:
         active_users = [
             {'username': r.get('name'), 'disabled': r.get('disabled')}
@@ -236,11 +264,22 @@ def send_heartbeat(api):
     except LibRouterosError as exc:
         log.warning('Could not read router state for heartbeat snapshot: %s', exc)
 
+    if USAGE_INTERVAL > 0 and time.monotonic() - _last_usage_read >= USAGE_INTERVAL:
+        try:
+            host_usage = read_host_usage(api)
+            _last_usage_read = time.monotonic()
+        except LibRouterosError as exc:
+            log.warning('Could not read hotspot host counters (FUP): %s', exc)
+
+    payload = {'active_users': active_users, 'active_sessions': active_sessions}
+    if host_usage is not None:
+        payload['host_usage'] = host_usage
+
     try:
         requests.post(
             f'{DJANGO_BASE_URL}/api/mikrotik/heartbeat/',
             headers=HEADERS, timeout=HTTP_TIMEOUT,
-            data=json.dumps({'active_users': active_users, 'active_sessions': active_sessions}),
+            data=json.dumps(payload),
         )
     except requests.RequestException as exc:
         log.warning('Heartbeat POST to Django failed: %s', exc)

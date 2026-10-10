@@ -613,3 +613,36 @@ class WalletAdjustment(models.Model):
 
     def __str__(self):
         return f'{self.amount} - {self.note}'
+
+
+class FUPAlert(models.Model):
+    """
+    One warning per (subscription, threshold). MONITORING ONLY: creating one
+    of these never touches the customer's access or speed.
+
+    The subscription is the "billing period": it runs from activation to
+    expiry, and renewals that EXTEND it share it. The unique constraint is
+    what guarantees a customer is never warned twice for the same threshold
+    in the same period, even if two heartbeats race.
+    """
+    class Threshold(models.IntegerChoices):
+        APPROACHING = 70, 'Approaching FUP (70%)'
+        HIGH = 85, 'High usage (85%)'
+        REACHED = 100, 'FUP reached (100%)'
+
+    subscription = models.ForeignKey(Subscription, on_delete=models.CASCADE, related_name='fup_alerts')
+    threshold = models.PositiveSmallIntegerField(choices=Threshold.choices)
+    # Snapshot at the moment of crossing, so the alert stays meaningful if the limit is edited later.
+    usage_bytes = models.BigIntegerField()
+    limit_mb = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'billing_fupalert'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['subscription', 'threshold'], name='unique_fup_alert_per_period'),
+        ]
+
+    def __str__(self):
+        return f'{self.subscription_id} crossed {self.threshold}%'

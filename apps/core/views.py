@@ -1743,3 +1743,113 @@ def toggle_feedback_contacted(request, feedback_id):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'success': True, 'is_contacted': item.is_contacted})
     return redirect('core:feedback_list')
+
+
+# ---------------------------------------------------------------------------
+# Packages (read-only for staff/shareholders; price-only edit for the Main Admin)
+# ---------------------------------------------------------------------------
+MAX_PACKAGE_PRICE = Decimal('100000')
+
+
+@login_required(login_url='core:admin_login')
+def package_management(request):
+    """Every staff account and shareholder can see the packages; only the Main Admin can change a price."""
+    from apps.packages.models import InternetPackage
+
+    if _staff_role_name(request.user) is None:
+        return HttpResponse('Forbidden.', status=403)
+    return render(request, 'core/packages.html', {
+        'packages': InternetPackage.objects.order_by('display_order', 'price'),
+        'can_edit_price': _is_main_admin(request.user),
+    })
+
+
+@login_required(login_url='core:admin_login')
+@require_POST
+def update_package_price(request, package_id):
+    """
+    Changes ONE field: price. Duration, speed, data and everything else are
+    deliberately never read from the request, so they cannot be altered here
+    even by a hand-crafted POST. Existing payments keep the amount they paid;
+    only purchases made after this point use the new price.
+    """
+    from django.db import transaction
+    from apps.core.audit import log_action
+    from apps.packages.models import InternetPackage
+
+    if not _is_main_admin(request.user):
+        return HttpResponse('Forbidden.', status=403)
+
+    raw = (request.POST.get('price') or '').strip()
+    try:
+        price = Decimal(raw)
+        valid = price.is_finite() and Decimal('0') < price <= MAX_PACKAGE_PRICE and price == price.quantize(Decimal('0.01'))
+    except InvalidOperation:
+        valid = False
+    if not valid:
+        messages.error(request, f'Enter a price above 0 and up to {MAX_PACKAGE_PRICE:,.0f}, with at most 2 decimal places.')
+        return redirect('core:packages')
+
+    with transaction.atomic():
+        package = get_object_or_404(InternetPackage.objects.select_for_update(), pk=package_id)
+        old_price = package.price
+        if price == old_price:
+            messages.info(request, f'{package.name} is already priced at {old_price:,.2f}.')
+            return redirect('core:packages')
+        package.price = price
+        package.save(update_fields=['price', 'updated_at'])
+        log_action(
+            request.user, 'PACKAGE_PRICE_CHANGE', package,
+            previous_value={'package': package.name, 'price': str(old_price)},
+            new_value={'package': package.name, 'price': str(price)},
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
+    messages.success(request, f'{package.name} price changed from {old_price:,.2f} to {price:,.2f}.')
+    return redirect('core:packages')
+
+
+# ---------------------------------------------------------------------------
+# FUP monitoring dashboard (read-only; never changes anyone's access)
+# ---------------------------------------------------------------------------
+@login_required(login_url='core:admin_login')
+def fup_monitor(request):
+    from apps.billing import fup
+    from apps.billing.models import FUPAlert
+    from apps.mikrotik.models import InternetSession, MikroTikRouter
+
+    if _staff_role_name(request.user) is None:
+        return HttpResponse('Forbidden.', status=403)
+
+    now = timezone.now()
+    rows = fup.dashboard_rows(now)
+    counts = {
+        'online': sum(1 for r in rows if r['online']),
+        'APPROACHING': sum(1 for r in rows if r['status'] == fup.APPROACHING),
+        'HIGH': sum(1 for r in rows if r['status'] == fup.HIGH),
+        'REACHED': sum(1 for r in rows if r['status'] == fup.REACHED),
+        'all': len(rows),
+    }
+    selected = request.GET.get('filter') or ''
+    if selected == 'online':
+        rows = [r for r in rows if r['online']]
+    elif selected in (fup.APPROACHING, fup.HIGH, fup.REACHED):
+        rows = [r for r in rows if r['status'] == selected]
+    else:
+        selected = ''
+
+    router = MikroTikRouter.objects.filter(is_active=True).first()
+    for r in rows:
+        r['used_h'] = fup.human_bytes(r['used'])
+        r['up_h'] = fup.human_bytes(r['uploaded'])
+        r['down_h'] = fup.human_bytes(r['downloaded'])
+    alerts = list(FUPAlert.objects.select_related('subscription__customer', 'subscription__package')[:20])
+    for a in alerts:
+        a.usage_h = fup.human_bytes(a.usage_bytes)
+    return render(request, 'core/fup_monitor.html', {
+        'rows': rows,
+        'counts': counts,
+        'selected': selected,
+        'recent_alerts': alerts,
+        'has_any_usage': InternetSession.objects.filter(last_usage_at__isnull=False).exists(),
+        'agent_last_seen': router.last_checked_at if router else None,
+    })

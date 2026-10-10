@@ -8,6 +8,7 @@ Only the agent may ever mark a MikroTikJob DONE/FAILED  Django itself
 never assumes a job succeeded just because it was queued (Section 36).
 """
 import json
+import logging
 import time
 
 from django.conf import settings
@@ -115,4 +116,14 @@ def heartbeat(request):
             router.cached_active_sessions = body['active_sessions']
             update_fields.append('cached_active_sessions')
         router.save(update_fields=update_fields)
+
+    # FUP monitoring: the agent attaches per-device byte counters about once a minute.
+    # Purely a record-keeping step; it must never be able to fail the heartbeat itself,
+    # because the heartbeat is what proves the agent/router link is alive.
+    if isinstance(body.get('host_usage'), list):
+        try:
+            from apps.billing.fup import record_usage_samples
+            record_usage_samples(body['host_usage'])
+        except Exception:  # noqa: BLE001
+            logging.getLogger(__name__).exception('FUP usage sample could not be recorded')
     return JsonResponse({'ok': True})
