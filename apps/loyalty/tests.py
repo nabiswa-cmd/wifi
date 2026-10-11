@@ -392,3 +392,245 @@ class AdminOverviewTests(Base):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, '1 Hour')
         self.assertEqual(resp.context['outstanding'], 40)
+
+
+class PastPurchaseTests(Base):
+    """The "Include past purchases" setting: old successful payments can earn points too, once."""
+
+    def old_payment(self, days_ago, amount=100, receipt=None, status=Payment.Status.SUCCESS):
+        """A payment made while the programme was off, so it earned nothing at the time."""
+        self.config.enabled = False
+        self.config.save()
+        p = self.pay(amount, receipt=receipt or f'OLD{days_ago:07d}', status=status)
+        when = timezone.now() - dt.timedelta(days=days_ago)
+        Payment.objects.filter(pk=p.pk).update(created_at=when, transaction_timestamp=when)
+        self.config.enabled = True
+        self.config.save()
+        return p
+
+    def turn_on(self, on=True):
+        self.config.include_past_purchases = on
+        self.config.save()
+
+    def test_off_by_default_so_old_payments_earn_nothing(self):
+        self.old_payment(30)
+        self.assertFalse(LoyaltyConfig.load().include_past_purchases)
+        self.assertEqual(services.snapshot(self.cust)['points'], 0)
+        self.assertEqual(PointsLedger.objects.count(), 0)
+
+    def test_on_credits_every_old_successful_payment(self):
+        self.old_payment(30, amount=100)   # 10
+        self.old_payment(10, amount=250)   # 25
+        self.turn_on()
+        snap = services.snapshot(self.cust)
+        self.assertEqual(snap['points'], 35)
+        self.assertTrue(snap['includes_past'])
+
+    def test_each_old_payment_counts_only_once_however_often_it_is_checked(self):
+        self.old_payment(30, amount=100)
+        self.turn_on()
+        for _ in range(4):
+            services.snapshot(self.cust)
+        self.assertEqual(services.balance(self.cust), 10)
+        self.assertEqual(PointsLedger.objects.filter(kind='EARN').count(), 1)
+
+    def test_a_payment_that_already_earned_is_not_counted_twice(self):
+        p = self.pay(100)
+        services.award_for_payment(p)            # earned live: 10
+        self.turn_on()
+        services.snapshot(self.cust)
+        self.assertEqual(services.balance(self.cust), 10)
+
+    def test_only_confirmed_payments_count(self):
+        for i, st in enumerate((Payment.Status.PENDING, Payment.Status.FAILED, Payment.Status.CANCELLED,
+                                Payment.Status.TIMEOUT, Payment.Status.REFUNDED)):
+            self.old_payment(20, receipt=f'BAD{i:07d}', status=st)
+        self.turn_on()
+        self.assertEqual(services.snapshot(self.cust)['points'], 0)
+
+    def test_nothing_happens_while_the_whole_programme_is_off(self):
+        self.old_payment(30)
+        self.turn_on()
+        self.config.enabled = False
+        self.config.save()
+        self.assertEqual(services.sync_past_purchases(self.cust), 0)
+        self.assertEqual(PointsLedger.objects.count(), 0)
+
+    def test_old_credits_are_dated_when_the_customer_really_paid(self):
+        self.old_payment(30, amount=100)
+        self.turn_on()
+        services.snapshot(self.cust)
+        entry = PointsLedger.objects.get(kind='EARN')
+        age = timezone.now() - entry.created_at
+        self.assertGreater(age, dt.timedelta(days=29))
+
+    def test_purchases_older_than_the_expiry_window_do_not_come_back_to_life(self):
+        # Expiry is 180 days. A payment 300 days ago must not earn usable points just because the setting is new.
+        self.old_payment(300, amount=100)
+        self.turn_on()
+        self.assertEqual(services.snapshot(self.cust)['points'], 0)
+        self.assertEqual(services.balance(self.cust), 0)
+
+    def test_an_old_purchase_keeps_a_recent_one_alive(self):
+        self.old_payment(300, amount=100)       # 10, but old
+        self.old_payment(5, amount=100)         # 10, recent: balance does not lapse
+        self.turn_on()
+        self.assertEqual(services.snapshot(self.cust)['points'], 20)
+
+    def test_claiming_a_reward_also_counts_past_purchases_first(self):
+        self.old_payment(10, amount=300)        # 30 points
+        self.turn_on()
+        v = services.redeem(self.cust, self.reward.id)
+        self.assertEqual(v.customer, self.cust)
+        self.assertEqual(services.balance(self.cust), 10)
+
+    def test_a_later_refund_still_takes_the_points_back(self):
+        p = self.old_payment(10, amount=100)
+        self.turn_on()
+        services.snapshot(self.cust)
+        self.assertEqual(services.balance(self.cust), 10)
+        p.status = Payment.Status.REFUNDED
+        p.save()
+        self.assertEqual(services.balance(self.cust), 0)
+
+    def test_backfill_all_credits_everyone_and_is_repeatable(self):
+        other = Customer.objects.create(full_name='Other', phone_number='254798765432')
+        self.old_payment(20, amount=100)
+        self.config.enabled = False
+        self.config.save()
+        p2 = self.pay(50, receipt='OTHER00001', customer=other)
+        Payment.objects.filter(pk=p2.pk).update(created_at=timezone.now() - dt.timedelta(days=5))
+        self.config.enabled = True
+        self.config.save()
+        self.turn_on()
+        self.assertEqual(services.backfill_all(dry_run=True), {'customers': 2, 'points': 15})
+        self.assertEqual(PointsLedger.objects.count(), 0)          # dry run changes nothing
+        self.assertEqual(services.backfill_all(), {'customers': 2, 'points': 15})
+        self.assertEqual(services.backfill_all(), {'customers': 0, 'points': 0})
+        self.assertEqual(services.balance(self.cust), 10)
+        self.assertEqual(services.balance(other), 5)
+
+    def test_backfill_all_refuses_while_the_setting_is_off(self):
+        with self.assertRaises(services.LoyaltyError):
+            services.backfill_all()
+
+    def test_management_command(self):
+        from io import StringIO
+        from django.core.management import call_command
+        self.old_payment(20, amount=100)
+        self.turn_on()
+        out = StringIO()
+        call_command('backfill_loyalty_points', stdout=out)
+        self.assertIn('Credited 10 points to 1 customer', out.getvalue())
+
+    def test_admin_action_credits_everyone(self):
+        user = User.objects.create_superuser(username='root', password='pw12345!', email='r@example.com')
+        self.old_payment(20, amount=100)
+        self.turn_on()
+        self.client.force_login(user)
+        resp = self.client.post('/django-admin/loyalty/loyaltyconfig/', {
+            'action': 'credit_past_purchases_now', '_selected_action': [self.config.pk],
+        }, follow=True)
+        self.assertContains(resp, 'Credited 10 points to 1 customer')
+        self.assertEqual(services.balance(self.cust), 10)
+
+
+class LandingPageSectionTests(Base):
+    """The points UI lives on the landing page itself: no redirect to /points/."""
+    AJAX = {'HTTP_X_REQUESTED_WITH': 'XMLHttpRequest'}
+
+    def lookup(self, phone='0712345678'):
+        return self.client.post(reverse('loyalty:lookup'), {'phone': phone}, **self.AJAX)
+
+    def test_link_scrolls_to_a_section_on_the_same_page(self):
+        html = self.client.get('/').content.decode()
+        self.assertIn('href="#points"', html)
+        self.assertIn('<section id="points"', html)
+        self.assertNotIn(reverse('loyalty:home'), html.split('<section id="points"')[0])   # no link out to /points/
+        # The section sits below the Admin Login box.
+        self.assertGreater(html.index('<section id="points"'), html.index('id="shareholder-login"'))
+        # ...and the voucher box it fills in exists.
+        self.assertIn('id="voucher-box"', html)
+        self.assertIn('id="voucher-code-input"', html)
+
+    def test_nothing_about_points_is_on_the_page_when_switched_off(self):
+        self.config.enabled = False
+        self.config.save()
+        html = self.client.get('/').content.decode()
+        self.assertNotIn('id="points"', html)
+        self.assertNotIn('points-lookup-form', html)
+
+    def test_rate_is_printed_as_a_plain_number(self):
+        self.assertIn('<span id="points-rate">10</span>', self.client.get('/').content.decode())
+        self.assertEqual(services.plain_decimal(Decimal('10.00')), '10')
+        self.assertEqual(services.plain_decimal(Decimal('2.50')), '2.5')
+
+    def test_ajax_lookup_returns_json_and_never_redirects(self):
+        services.award_for_payment(self.pay(100))
+        resp = self.lookup()
+        self.assertEqual(resp.status_code, 200)
+        d = resp.json()
+        self.assertTrue(d['success'])
+        self.assertEqual((d['points'], d['has_phone'], d['verified']), (10, True, False))
+        self.assertEqual(d['masked_phone'], '0712 ••• 678')
+        self.assertEqual(d['ksh_per_point'], '10')
+        self.assertEqual(d['history'], [])
+        self.assertIsNone(d['voucher'])
+
+    def test_ajax_lookup_with_a_bad_number(self):
+        resp = self.lookup('123')
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(resp.json()['success'])
+
+    def test_ajax_lookup_is_rate_limited(self):
+        codes = [self.lookup().status_code for _ in range(22)]
+        self.assertEqual(codes[-1], 429)
+
+    def test_the_old_form_post_still_redirects(self):
+        resp = self.client.post(reverse('loyalty:lookup'), {'phone': '0712345678'})
+        self.assertEqual(resp.status_code, 302)
+
+    def test_unknown_number_looks_like_zero_points_in_json_too(self):
+        d = self.lookup('0711000000').json()
+        self.assertEqual(d['points'], 0)
+        self.assertFalse(Customer.objects.filter(phone_number='254711000000').exists())
+
+    def test_live_shows_history_and_the_unused_voucher_only_after_verifying(self):
+        p = self.pay(300)
+        services.award_for_payment(p)
+        self.lookup()
+        before = self.client.get(reverse('loyalty:live')).json()
+        self.assertEqual((before['history'], before['voucher']), ([], None))
+        self.client.post(reverse('loyalty:verify'), {'code': 'SFH3JT6LKQ'})
+        claimed = self.client.post(reverse('loyalty:redeem'), {'reward_id': self.reward.id}).json()
+        after = self.client.get(reverse('loyalty:live')).json()
+        self.assertTrue(after['verified'])
+        self.assertEqual(after['voucher']['code'], claimed['code'])      # still there after a page reload
+        self.assertEqual(after['voucher']['package'], '1 Hour')
+        self.assertEqual({h['kind'] for h in after['history']}, {'Earned from payment', 'Redeemed for voucher'})
+
+    def test_voucher_disappears_from_the_panel_once_used(self):
+        self.give(30)
+        self.lookup()
+        self.client.post(reverse('loyalty:verify'), {'code': self.pay(10).mpesa_receipt_number})
+        d = self.client.post(reverse('loyalty:redeem'), {'reward_id': self.reward.id}).json()
+        Voucher.objects.filter(code=d['code']).update(status=Voucher.Status.USED)
+        self.assertIsNone(self.client.get(reverse('loyalty:live')).json()['voucher'])
+
+    def test_ajax_forget_clears_the_number(self):
+        self.lookup()
+        resp = self.client.post(reverse('loyalty:forget'), **self.AJAX)
+        self.assertEqual(resp.json(), {'success': True})
+        self.assertFalse(self.client.get(reverse('loyalty:live')).json()['has_phone'])
+
+    def test_past_purchases_show_up_in_the_landing_page_panel(self):
+        self.config.enabled = False
+        self.config.save()
+        self.pay(200)
+        self.config.enabled = True
+        self.config.include_past_purchases = True
+        self.config.save()
+        d = self.lookup().json()
+        self.assertEqual(d['points'], 20)
+        self.assertTrue(d['includes_past'])
+        self.assertTrue(d['rewards'][0]['affordable'])

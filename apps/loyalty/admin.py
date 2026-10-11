@@ -1,10 +1,27 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 
+from . import services
 from .models import LoyaltyConfig, LoyaltyReward, PointsLedger
 
 
 @admin.register(LoyaltyConfig)
 class LoyaltyConfigAdmin(admin.ModelAdmin):
+    actions = ['credit_past_purchases_now']
+
+    @admin.action(description='Give points for past purchases to ALL customers now')
+    def credit_past_purchases_now(self, request, queryset):
+        """
+        Optional: customers are also credited automatically the first time they open the
+        "My points" section, so this just brings everyone (and the staff totals) up to date at once.
+        """
+        try:
+            done = services.backfill_all()
+        except services.LoyaltyError as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
+            return
+        self.message_user(request, f"Credited {done['points']} points to {done['customers']} customer(s) "
+                                   f'for past purchases.', level=messages.SUCCESS)
+
     def has_add_permission(self, request):
         return not LoyaltyConfig.objects.exists()
 

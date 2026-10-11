@@ -59,6 +59,38 @@ def _mask(phone):
     return f'0{phone[3:6]} ••• {phone[-3:]}' if phone and len(phone) == 12 else ''
 
 
+def _is_ajax(request):
+    return request.headers.get('x-requested-with') == 'XMLHttpRequest'
+
+
+def _panel(request):
+    """
+    Everything the landing page's "My points" section needs, as JSON-safe data.
+    Same trust levels as the standalone page: the balance and rewards come from the phone
+    number alone; history and the unused reward voucher need the M-Pesa-code verification.
+    """
+    config = LoyaltyConfig.load()
+    customer, verified, phone = _state(request)
+    if not phone:
+        return {'enabled': config.enabled, 'has_phone': False, 'verified': False, 'points': 0,
+                'rewards': [], 'progress': 0, 'next_reward': None,
+                'ksh_per_point': services.plain_decimal(config.ksh_per_point), 'expiry_days': config.expiry_days,
+                'includes_past': config.include_past_purchases}
+    snap = services.snapshot(customer)
+    snap.update(has_phone=True, verified=verified, masked_phone=_mask(phone), phone='0' + phone[3:],
+                history=[], voucher=None)
+    if verified and customer:
+        snap['history'] = [
+            {'kind': h.get_kind_display(), 'note': h.note, 'points': h.points, 'date': h.created_at.strftime('%d %b')}
+            for h in PointsLedger.objects.filter(customer=customer)[:10]
+        ]
+        v = services.outstanding_voucher(customer)
+        if v:
+            snap['voucher'] = {'code': v.code, 'package': v.package.name,
+                               'expires': v.expiry_date.strftime('%d %b %Y, %H:%M')}
+    return snap
+
+
 def home(request):
     config = LoyaltyConfig.load()
     customer, verified, phone = _state(request)
@@ -77,19 +109,26 @@ def home(request):
 
 @require_POST
 def lookup(request):
+    ajax = _is_ajax(request)
     if _throttled(request, 'lookup', 20, 3600):
+        if ajax:
+            return JsonResponse({'success': False, 'error': 'Too many tries. Please wait a little and try again.'}, status=429)
         return render(request, 'loyalty/points.html', {
             'config': LoyaltyConfig.load(), 'error': 'Too many tries. Please wait a little and try again.',
             'hotspot': _hotspot(request), 'ksh_per_point': LoyaltyConfig.load().ksh_per_point.normalize(),
         }, status=429)
     phone = normalize_phone_number(request.POST.get('phone', ''))
     if not phone:
+        if ajax:
+            return JsonResponse({'success': False, 'error': 'Enter a valid Safaricom number, e.g. 0712345678.'}, status=400)
         return render(request, 'loyalty/points.html', {
             'config': LoyaltyConfig.load(), 'error': 'Enter a valid Safaricom number, e.g. 0712345678.',
             'hotspot': _hotspot(request), 'ksh_per_point': LoyaltyConfig.load().ksh_per_point.normalize(),
         })
     customer = Customer.objects.filter(phone_number=phone).first()
     request.session[SESSION_KEY] = {'cid': customer.pk if customer else None, 'phone': phone, 'verified': False}
+    if ajax:
+        return JsonResponse({'success': True, **_panel(request)})
     return redirect(_home_url(request))
 
 
@@ -112,14 +151,11 @@ def verify(request):
 
 @require_GET
 def live(request):
-    """Polled by the page every few seconds while it's open. Reads only; uses the session's number."""
-    customer, verified, phone = _state(request)
-    if not phone:
-        return JsonResponse({'enabled': LoyaltyConfig.load().enabled, 'points': 0, 'rewards': [], 'progress': 0,
-                             'next_reward': None, 'verified': False})
-    snap = services.snapshot(customer)
-    snap['verified'] = verified
-    return JsonResponse(snap)
+    """
+    Polled by the landing page while the "My points" section is on screen. Uses the session's number.
+    Only side effect: if the admin allows past purchases, any not-yet-counted old payment is credited once.
+    """
+    return JsonResponse(_panel(request))
 
 
 @require_POST
@@ -149,4 +185,6 @@ def redeem_view(request):
 @require_POST
 def forget(request):
     request.session.pop(SESSION_KEY, None)
+    if _is_ajax(request):
+        return JsonResponse({'success': True})
     return redirect(_home_url(request))

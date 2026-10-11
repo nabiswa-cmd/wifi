@@ -36,6 +36,12 @@ class LoyaltyConfig(models.Model):
     expiry_days = models.PositiveIntegerField(
         default=180, help_text='Points lapse after this many days with no new points earned. 0 = never.',
     )
+    include_past_purchases = models.BooleanField(
+        default=False,
+        help_text=('Also give points for successful M-Pesa payments made BEFORE the programme (or this setting) was '
+                   'switched on. Each past payment counts once, and is dated when it was really paid, so the '
+                   '"points lapse after N days" rule still applies to old purchases. Off = only new payments earn.'),
+    )
     max_redemptions_per_30_days = models.PositiveSmallIntegerField(default=3)
     voucher_valid_days = models.PositiveSmallIntegerField(
         default=7, help_text='How long a reward voucher can be used before it expires (points are not refunded).',

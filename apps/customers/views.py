@@ -18,11 +18,15 @@ def landing(request):
     packages = InternetPackage.objects.filter(is_active=True).order_by('display_order')
     try:
         from apps.loyalty.models import LoyaltyConfig
-        loyalty_enabled = LoyaltyConfig.load().enabled
+        from apps.loyalty.services import plain_decimal
+        loyalty_config = LoyaltyConfig.load()
+        loyalty_enabled = loyalty_config.enabled
+        loyalty_ksh_per_point = plain_decimal(loyalty_config.ksh_per_point)
     except Exception:  # noqa: BLE001 - the portal must load even if loyalty isn't migrated yet
-        loyalty_enabled = False
+        loyalty_enabled, loyalty_ksh_per_point = False, ''
     return render(request, 'customers/landing.html', {
         'loyalty_enabled': loyalty_enabled,
+        'loyalty_ksh_per_point': loyalty_ksh_per_point,
         'packages': packages,
         'hotspot_mac': request.GET.get('mac', ''),
         'hotspot_link_login': request.GET.get('link', ''),
