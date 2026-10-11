@@ -456,7 +456,16 @@ class PastPurchaseTests(Base):
         self.assertEqual(services.sync_past_purchases(self.cust), 0)
         self.assertEqual(PointsLedger.objects.count(), 0)
 
+    def test_old_credits_are_dated_today_by_default_so_they_can_be_redeemed(self):
+        self.old_payment(300, amount=100)
+        self.turn_on()
+        self.assertEqual(services.snapshot(self.cust)['points'], 10)
+        entry = PointsLedger.objects.get(kind='EARN')
+        self.assertLess(timezone.now() - entry.created_at, dt.timedelta(minutes=5))
+
     def test_old_credits_are_dated_when_the_customer_really_paid(self):
+        self.config.backdate_past_purchases = True
+        self.config.save()
         self.old_payment(30, amount=100)
         self.turn_on()
         services.snapshot(self.cust)
@@ -465,13 +474,17 @@ class PastPurchaseTests(Base):
         self.assertGreater(age, dt.timedelta(days=29))
 
     def test_purchases_older_than_the_expiry_window_do_not_come_back_to_life(self):
-        # Expiry is 180 days. A payment 300 days ago must not earn usable points just because the setting is new.
+        # Only with backdating ON: a payment 300 days ago (expiry 180) earns nothing usable.
+        self.config.backdate_past_purchases = True
+        self.config.save()
         self.old_payment(300, amount=100)
         self.turn_on()
         self.assertEqual(services.snapshot(self.cust)['points'], 0)
         self.assertEqual(services.balance(self.cust), 0)
 
     def test_an_old_purchase_keeps_a_recent_one_alive(self):
+        self.config.backdate_past_purchases = True
+        self.config.save()
         self.old_payment(300, amount=100)       # 10, but old
         self.old_payment(5, amount=100)         # 10, recent: balance does not lapse
         self.turn_on()

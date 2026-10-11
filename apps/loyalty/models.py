@@ -42,6 +42,12 @@ class LoyaltyConfig(models.Model):
                    'switched on. Each past payment counts once, and is dated when it was really paid, so the '
                    '"points lapse after N days" rule still applies to old purchases. Off = only new payments earn.'),
     )
+    backdate_past_purchases = models.BooleanField(
+        default=False,
+        help_text=('Only matters with "Include past purchases". OFF (recommended when launching): old payments are '
+                   'credited as of today, so every customer can redeem them and the "points lapse" clock starts now. '
+                   'ON: old payments keep their real payment date, so ones older than the expiry period lapse at once.'),
+    )
     max_redemptions_per_30_days = models.PositiveSmallIntegerField(default=3)
     voucher_valid_days = models.PositiveSmallIntegerField(
         default=7, help_text='How long a reward voucher can be used before it expires (points are not refunded).',

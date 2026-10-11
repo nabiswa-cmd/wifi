@@ -96,7 +96,8 @@ def sync_past_purchases(customer, config=None):
         return 0
     gained = 0
     for payment in _unrewarded_payments(customer).select_related('package').order_by('created_at'):
-        entry = award_for_payment(payment, earned_at=payment.transaction_timestamp or payment.created_at)
+        earned_at = (payment.transaction_timestamp or payment.created_at) if config.backdate_past_purchases else None
+        entry = award_for_payment(payment, earned_at=earned_at)
         if entry:
             gained += entry.points
     return gained
