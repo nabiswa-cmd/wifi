@@ -248,7 +248,7 @@
     <div class="lp-center lp-muted">points</div>
     <div class="lp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="points-progress"><span id="points-bar"></span></div>
     <div class="lp-center lp-muted" id="points-next"></div>
-    <div class="lp-center" style="margin-top:8px;"><span class="lp-live"><i></i> Updates automatically</span></div>
+    <div class="lp-center" style="margin-top:8px;">Updates automatically</span></div>
 
     <!-- Voucher ready (shows right after claiming, and again later while it is still unused) -->
     <div class="lp-box" id="points-voucher" hidden>
@@ -268,7 +268,7 @@
     <!-- Needed once, to claim -->
     <div class="lp-box" id="points-verify" hidden>
       <h3>Confirm it's you</h3>
-      <p class="lp-muted" style="margin:0 0 10px;">To protect your points, enter the M-Pesa code from any payment you made with this number (like SFH3JT6LKQ), or paste the whole M-Pesa message.</p>
+      <p class="lp-muted" style="margin:0 0 10px;">To protect your points, enter the M-Pesa code from any payment you made with this number (like UFH3JT6LKQ), or paste the whole M-Pesa message.</p>
       <form id="points-verify-form">
         <input type="text" id="points-code-input" placeholder="M-Pesa code" autocapitalize="characters" autocomplete="off" required>
         <button type="submit" class="btn" id="points-verify-btn" style="width:100%;">Confirm it's me</button>
@@ -289,7 +289,7 @@
 <div class="toast-stack" id="connectionToastStack">
   <div class="toast toast-plain" id="connectionToast">
     <span class="toast-icon"><i class="bi bi-info-lg"></i></span>
-    <span class="toast-msg">Taking long? You have 10 extra minutes. Still offline? Enter your M-Pesa code below. We’re fixing the issue.
+    <span class="toast-msg">Offline?Enter your M-Pesa code below
 </span>
     <button class="toast-close" type="button" aria-label="Dismiss" id="connectionToastClose">&times;</button>
   </div>
@@ -874,7 +874,7 @@
 
       let foot = 'Earn 1 point for every KSh ' + d.ksh_per_point + ' you spend with M-Pesa.';
       if (d.includes_past) foot += ' Purchases you made before rewards started count too.';
-      foot += d.expiry_days ? ' Points lapse if you go ' + d.expiry_days + ' days without earning any.' : '';
+      foot +='';
       $('points-footnote').textContent = foot;
     }
 

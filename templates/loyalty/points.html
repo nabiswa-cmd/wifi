@@ -57,7 +57,7 @@
     {% if not verified %}
     <div class="card lp-card" id="lp-verify-card">
       <strong>Claim a reward</strong>
-      <p class="lp-muted" style="margin:6px 0 10px;">To protect your points, enter the M-Pesa code from any payment you made with this number (like SFH3JT6LKQ).</p>
+      <p class="lp-muted" style="margin:6px 0 10px;">To protect your points, enter the M-Pesa code from any payment you made with this number (like UFH3JT6LKQ).</p>
       <form id="lp-verify-form">
         {% csrf_token %}
         <input type="text" id="lp-code-input" placeholder="M-Pesa code" required autocapitalize="characters" style="width:100%; margin-bottom:10px;">
@@ -96,7 +96,7 @@
       {% endfor %}
     </div>
     {% endif %}
-    <p class="lp-muted">Earn 1 point for every KSh {{ ksh_per_point }} you spend with M-Pesa. Points lapse if you go {{ config.expiry_days }} days without earning any{% if not config.expiry_days %} (never){% endif %}.</p>
+    <p class="lp-muted">Earn 1 point for every KSh {{ ksh_per_point }} you spend with M-Pesa.</p>
   {% endif %}
 </div>
 
