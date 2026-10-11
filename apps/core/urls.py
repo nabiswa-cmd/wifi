@@ -36,6 +36,7 @@ urlpatterns = [
     path('packages/', views.package_management, name='packages'),
     path('packages/<int:package_id>/price/', views.update_package_price, name='update_package_price'),
     path('usage/', views.fup_monitor, name='fup_monitor'),
+    path('loyalty/', views.loyalty_overview, name='loyalty'),
     path('vouchers/', views.voucher_management, name='vouchers'),
     path('vouchers/<int:batch_id>/approve/', views.approve_voucher_batch, name='approve_voucher_batch'),
     path('vouchers/approvals/', views.voucher_approvals_admin, name='voucher_approvals_admin'),

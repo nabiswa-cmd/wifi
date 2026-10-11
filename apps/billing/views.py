@@ -297,6 +297,12 @@ def mpesa_callback(request):
             transaction_time = _parse_transaction_date(items.get('TransactionDate'))
             payment.mark_success(receipt=receipt, transaction_time=transaction_time, raw_payload=body)
             Subscription.activate_from_payment(payment.customer, payment.package, payment)
+            # Loyalty points: a failure here is logged and ignored. It must never undo or delay a real payment.
+            try:
+                from apps.loyalty.services import award_for_payment
+                award_for_payment(payment)
+            except Exception:  # noqa: BLE001
+                logger.exception('Loyalty points could not be awarded for payment %s', payment.pk)
         else:
             # 1032 = customer cancelled; anything else = failed/timeout.
             payment.status = Payment.Status.CANCELLED if result_code == 1032 else Payment.Status.FAILED

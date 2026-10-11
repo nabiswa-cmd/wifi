@@ -8,6 +8,7 @@ urlpatterns = [
     path('admin-portal/', include('apps.core.urls')),  # Branded staff dashboard (Section 20)
     path('api/', include('api.urls')),                # DRF API surface (Section 30)
     path('billing/', include('apps.billing.urls')),    # Purchase flow (Section 9/10/11)
+    path('points/', include('apps.loyalty.urls')),       # Loyalty points (customer-facing)
     path('vouchers/', include('apps.vouchers.urls')),   # Voucher redemption (Section 19)
     path('media/<path:path>', serve_media, {'document_root': settings.MEDIA_ROOT}),
     path('', include('apps.customers.urls')),          # Customer-facing captive portal (Section 9)

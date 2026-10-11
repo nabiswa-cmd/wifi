@@ -16,7 +16,13 @@ def landing(request):
     this exact device by MAC once payment succeeds.
     """
     packages = InternetPackage.objects.filter(is_active=True).order_by('display_order')
+    try:
+        from apps.loyalty.models import LoyaltyConfig
+        loyalty_enabled = LoyaltyConfig.load().enabled
+    except Exception:  # noqa: BLE001 - the portal must load even if loyalty isn't migrated yet
+        loyalty_enabled = False
     return render(request, 'customers/landing.html', {
+        'loyalty_enabled': loyalty_enabled,
         'packages': packages,
         'hotspot_mac': request.GET.get('mac', ''),
         'hotspot_link_login': request.GET.get('link', ''),

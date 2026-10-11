@@ -1,0 +1,61 @@
+{% extends "core/admin_base.html" %}
+{% block admin_title %}Loyalty{% endblock %}
+{% block admin_content %}
+<div style="padding:20px;">
+  <h2>Loyalty points</h2>
+  <p class="list-meaning" style="margin:0 0 12px;">
+    Customers earn 1 point per KSh {{ config.ksh_per_point|floatformat:"-2" }} paid by M-Pesa and trade points for a voucher.
+    Programme status:
+    {% if config.enabled %}<span class="badge badge-success">ON</span>{% else %}<span class="badge badge-warning">OFF (nothing is earned or redeemable)</span>{% endif %}
+    {% if can_edit %}&middot; Change the rules and rewards in <a href="/django-admin/loyalty/">Django admin &rarr; Loyalty</a>.{% endif %}
+  </p>
+
+  <div class="tile-grid" style="margin-bottom:12px;">
+    {% include "core/_stat_tile.html" with icon="bi-stars" tone="amber" label="Points customers hold" value=outstanding %}
+    {% include "core/_stat_tile.html" with icon="bi-cash-coin" tone="red" label="Max retail value of those points (KSh)" value=liability_value %}
+    {% include "core/_stat_tile.html" with icon="bi-plus-circle" tone="blue" label="Earned, last 30 days" value=earned_30d %}
+    {% include "core/_stat_tile.html" with icon="bi-gift" tone="purple" label="Redeemed, last 30 days" value=redeemed_30d %}
+  </div>
+  <p class="list-meaning" style="margin:0 0 12px;">
+    The retail value is the most the held points could be worth at your normal prices. Internet time costs you almost nothing extra to give away,
+    so your real cost is far lower. Reward vouchers waiting to be used: <strong>{{ vouchers_out }}</strong>. Already used: <strong>{{ vouchers_used }}</strong>.
+  </p>
+
+  <h3 style="margin:14px 0 8px;">Rewards and their rebate</h3>
+  <p class="list-meaning" style="margin:0 0 8px;">Rebate = what you give away as a % of what the customer spent to earn it. Your ceiling is {{ config.max_rebate_percent|floatformat:"-2" }}%.</p>
+  <div class="card">
+    <table>
+      <thead><tr><th>Reward</th><th>Package price</th><th>Points</th><th>Customer spends</th><th>Rebate</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for r in rewards %}
+        <tr>
+          <td data-label="Reward">{{ r.reward.package.name }}</td>
+          <td data-label="Package price">KSh {{ r.reward.package.price|floatformat:"-2" }}</td>
+          <td data-label="Points">{{ r.reward.points_cost }}</td>
+          <td data-label="Customer spends">KSh {{ r.spend_needed|floatformat:"-2" }}</td>
+          <td data-label="Rebate"><strong>{{ r.rebate }}%</strong></td>
+          <td data-label="Status">
+            {% if r.over_limit %}<span class="badge badge-danger">Over limit, not offered</span>
+            {% elif not r.reward.is_active %}<span class="badge badge-info">Switched off</span>
+            {% elif r.offered %}<span class="badge badge-success">Offered</span>
+            {% else %}<span class="badge badge-info">Package not for sale</span>{% endif %}
+          </td>
+        </tr>
+        {% empty %}<tr><td colspan="6">No rewards created yet. Add one in Django admin &rarr; Loyalty rewards.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin:18px 0 8px;">Biggest balances ({{ holder_count }} customer{{ holder_count|pluralize }} hold points)</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th>Customer</th><th>Phone</th><th>Points</th></tr></thead>
+      <tbody>
+        {% for h in holders %}
+        <tr><td data-label="Customer">{{ h.customer__full_name }}</td><td data-label="Phone">{{ h.customer__phone_number }}</td><td data-label="Points"><strong>{{ h.balance }}</strong></td></tr>
+        {% empty %}<tr><td colspan="3">Nobody holds points yet.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

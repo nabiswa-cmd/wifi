@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}{{ branding.business_name }} &middot; My Points{% endblock %}
+{% block content %}
+<style>
+  .lp-wrap { max-width: 460px; margin: 0 auto; padding: 20px 16px 40px; }
+  .lp-card { padding: 20px; margin-bottom: 14px; }
+  .lp-points { font-size: 3.6rem; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+  .lp-live { display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--color-text-muted); }
+  .lp-live i { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: lp-pulse 2s infinite; }
+  @keyframes lp-pulse { 50% { opacity: .35; } }
+  .lp-bar { height: 10px; border-radius: 6px; background: var(--color-border); overflow: hidden; margin: 12px 0 6px; }
+  .lp-bar > span { display: block; height: 100%; width: 0; background: var(--color-primary); transition: width .6s ease; }
+  .lp-reward { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--color-border); }
+  .lp-reward:first-of-type { border-top: 0; }
+  .lp-reward small { color: var(--color-text-muted); display: block; }
+  .lp-code { font-family: monospace; font-size: 1.6rem; font-weight: 700; letter-spacing: .12em; text-align: center; padding: 10px; border: 2px dashed var(--color-primary); border-radius: 8px; margin: 10px 0; user-select: all; }
+  .lp-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--color-primary); color: #fff; padding: 10px 18px; border-radius: 24px; font-weight: 600; z-index: 50; }
+  .lp-msg { font-size: .85rem; margin-top: 8px; }
+  .lp-err { color: #c0392b; }
+  .lp-muted { color: var(--color-text-muted); font-size: .85rem; }
+  .lp-btn-link { background: none; border: 0; color: var(--color-text-muted); text-decoration: underline; cursor: pointer; font-size: .8rem; padding: 0; }
+</style>
+
+<div class="lp-wrap">
+  <p style="margin:0 0 10px;"><a href="/{% if hotspot.mac or hotspot.link %}?{% if hotspot.mac %}mac={{ hotspot.mac|urlencode }}{% endif %}{% if hotspot.link %}&link={{ hotspot.link|urlencode }}{% endif %}{% endif %}" class="lp-muted">&larr; Back to packages</a></p>
+  <h1 style="font-size:1.6rem; margin:0 0 4px;">My Points</h1>
+
+  {% if not config.enabled %}
+    <div class="card lp-card"><p style="margin:0;">Loyalty points are coming soon. Keep an eye on this page.</p></div>
+
+  {% elif not has_phone %}
+    <p class="lp-muted" style="margin-top:0;">Earn 1 point for every KSh {{ ksh_per_point }} you spend. Collect enough and get a free voucher.</p>
+    <div class="card lp-card">
+      <form method="post" action="{% url 'loyalty:lookup' %}">
+        {% csrf_token %}
+        <input type="hidden" name="mac" value="{{ hotspot.mac }}"><input type="hidden" name="link" value="{{ hotspot.link }}">
+        <label for="lp-phone" style="font-weight:600;">Your M-Pesa number</label>
+        <input id="lp-phone" type="tel" name="phone" placeholder="0712345678" required inputmode="tel" autocomplete="tel" style="width:100%; margin:8px 0 12px;">
+        <button class="btn" type="submit" style="width:100%;">Show my points</button>
+        {% if error %}<p class="lp-msg lp-err">{{ error }}</p>{% endif %}
+      </form>
+    </div>
+
+  {% else %}
+    <div class="card lp-card" style="text-align:center;">
+      <div class="lp-muted">{{ masked_phone }} <form method="post" action="{% url 'loyalty:forget' %}" style="display:inline;">{% csrf_token %}<input type="hidden" name="mac" value="{{ hotspot.mac }}"><input type="hidden" name="link" value="{{ hotspot.link }}"><button class="lp-btn-link" type="submit">change</button></form></div>
+      <div class="lp-points" id="lp-points" aria-live="polite">{{ snap.points }}</div>
+      <div class="lp-muted">points</div>
+      <div class="lp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ snap.progress }}"><span id="lp-bar" style="width:{{ snap.progress }}%"></span></div>
+      <div id="lp-next" class="lp-muted">
+        {% if snap.next_reward %}{{ snap.next_reward.short_by }} more point{{ snap.next_reward.short_by|pluralize }} to a free {{ snap.next_reward.name }}
+        {% elif snap.rewards %}You can claim a reward!{% else %}Rewards will appear here soon.{% endif %}
+      </div>
+      <div class="lp-live" style="margin-top:10px;"><i></i> Updates automatically</div>
+    </div>
+
+    {% if not verified %}
+    <div class="card lp-card" id="lp-verify-card">
+      <strong>Claim a reward</strong>
+      <p class="lp-muted" style="margin:6px 0 10px;">To protect your points, enter the M-Pesa code from any payment you made with this number (like SFH3JT6LKQ).</p>
+      <form id="lp-verify-form">
+        {% csrf_token %}
+        <input type="text" id="lp-code-input" placeholder="M-Pesa code" required autocapitalize="characters" style="width:100%; margin-bottom:10px;">
+        <button class="btn" type="submit" style="width:100%;">Confirm it's me</button>
+      </form>
+      <p class="lp-msg lp-err" id="lp-verify-msg" hidden></p>
+    </div>
+    {% endif %}
+
+    <div class="card lp-card" id="lp-rewards-card">
+      <strong>Rewards</strong>
+      <div id="lp-rewards" style="margin-top:6px;">
+        {% for r in snap.rewards %}
+        <div class="lp-reward" data-id="{{ r.id }}">
+          <div>{{ r.name }}<small>{{ r.cost }} points</small></div>
+          <button class="btn lp-redeem" type="button" data-id="{{ r.id }}" {% if not r.affordable %}disabled{% endif %}>{% if r.affordable %}Claim{% else %}{{ r.short_by }} to go{% endif %}</button>
+        </div>
+        {% empty %}<p class="lp-muted" style="margin:8px 0 0;">No rewards available yet.</p>{% endfor %}
+      </div>
+      <p class="lp-msg lp-err" id="lp-redeem-msg" hidden></p>
+    </div>
+
+    <div class="card lp-card" id="lp-voucher-card" hidden>
+      <strong>Your voucher is ready</strong>
+      <div class="lp-code" id="lp-voucher-code"></div>
+      <p class="lp-muted" id="lp-voucher-info" style="margin:0 0 12px;"></p>
+      <a class="btn" id="lp-connect" href="#" style="display:block; text-align:center;">Connect now</a>
+      <p class="lp-muted" style="margin:8px 0 0;">Open this page from the Wi-Fi sign-in to connect your device. Save the code: it works once, on your number.</p>
+    </div>
+
+    {% if verified and history %}
+    <div class="card lp-card">
+      <strong>Recent activity</strong>
+      {% for h in history %}
+      <div class="lp-reward"><div>{{ h.get_kind_display }}<small>{{ h.note }} &middot; {{ h.created_at|date:"d M" }}</small></div><strong style="color:{% if h.points > 0 %}#16a34a{% else %}var(--color-text-muted){% endif %};">{{ h.points|stringformat:"+d" }}</strong></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <p class="lp-muted">Earn 1 point for every KSh {{ ksh_per_point }} you spend with M-Pesa. Points lapse if you go {{ config.expiry_days }} days without earning any{% if not config.expiry_days %} (never){% endif %}.</p>
+  {% endif %}
+</div>
+
+{% if has_phone and config.enabled %}
+<form id="lp-csrf" hidden>{% csrf_token %}</form>
+<script>
+(function () {
+  var csrf = document.querySelector('#lp-csrf [name=csrfmiddlewaretoken]').value;
+  var HS = {mac: '{{ hotspot.mac|escapejs }}', link: '{{ hotspot.link|escapejs }}'};
+  var lastPoints = {{ snap.points }};
+  var timer = null;
+
+  function toast(text) {
+    var t = document.createElement('div'); t.className = 'lp-toast'; t.textContent = text; document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 3500);
+  }
+  function render(d) {
+    var el = document.getElementById('lp-points');
+    if (d.points > lastPoints) toast('+' + (d.points - lastPoints) + ' points!');
+    lastPoints = d.points; el.textContent = d.points;
+    document.getElementById('lp-bar').style.width = d.progress + '%';
+    var nx = document.getElementById('lp-next');
+    nx.textContent = d.next_reward ? (d.next_reward.short_by + ' more point' + (d.next_reward.short_by === 1 ? '' : 's') + ' to a free ' + d.next_reward.name)
+                                   : (d.rewards.length ? 'You can claim a reward!' : 'Rewards will appear here soon.');
+    d.rewards.forEach(function (r) {
+      var b = document.querySelector('.lp-redeem[data-id="' + r.id + '"]');
+      if (!b) return; b.disabled = !r.affordable; b.textContent = r.affordable ? 'Claim' : (r.short_by + ' to go');
+    });
+    if (d.verified) { var vc = document.getElementById('lp-verify-card'); if (vc) vc.hidden = true; }
+  }
+  function poll() {
+    if (document.hidden) return;
+    fetch('{% url "loyalty:live" %}', {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
+      .then(function (r) { return r.json(); }).then(render).catch(function () {});
+  }
+  timer = setInterval(poll, 15000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+
+  var vf = document.getElementById('lp-verify-form');
+  if (vf) vf.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var msg = document.getElementById('lp-verify-msg'); msg.hidden = true;
+    fetch('{% url "loyalty:verify" %}', {method: 'POST', credentials: 'same-origin',
+      headers: {'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'code=' + encodeURIComponent(document.getElementById('lp-code-input').value)})
+    .then(function (r) { return r.json(); }).then(function (d) {
+      if (d.success) { toast('Confirmed. You can claim now.'); document.getElementById('lp-verify-card').hidden = true; poll(); }
+      else { msg.textContent = d.error; msg.hidden = false; }
+    }).catch(function () { msg.textContent = 'Something went wrong. Try again.'; msg.hidden = false; });
+  });
+
+  document.querySelectorAll('.lp-redeem').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var msg = document.getElementById('lp-redeem-msg'); msg.hidden = true;
+      if (!confirm('Use these points to get a ' + btn.closest('.lp-reward').querySelector('div').firstChild.textContent.trim() + ' voucher?')) return;
+      btn.disabled = true;
+      fetch('{% url "loyalty:redeem" %}', {method: 'POST', credentials: 'same-origin',
+        headers: {'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'reward_id=' + encodeURIComponent(btn.dataset.id)})
+      .then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.success) { msg.textContent = d.error; msg.hidden = false;
+          if (d.need_verify) { var vc = document.getElementById('lp-verify-card'); if (vc) vc.scrollIntoView({behavior: 'smooth'}); }
+          poll(); return; }
+        document.getElementById('lp-voucher-code').textContent = d.code;
+        document.getElementById('lp-voucher-info').textContent = d.package + ' voucher, use before ' + d.expires + '.';
+        var q = []; if (HS.mac) q.push('mac=' + encodeURIComponent(HS.mac)); if (HS.link) q.push('link=' + encodeURIComponent(HS.link));
+        q.push('voucher=' + encodeURIComponent(d.code)); q.push('phone=' + encodeURIComponent(d.phone));
+        document.getElementById('lp-connect').href = '/?' + q.join('&') + '#reconnect';
+        document.getElementById('lp-voucher-card').hidden = false;
+        document.getElementById('lp-voucher-card').scrollIntoView({behavior: 'smooth'});
+        poll();
+      }).catch(function () { msg.textContent = 'Something went wrong. Try again.'; msg.hidden = false; btn.disabled = false; });
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

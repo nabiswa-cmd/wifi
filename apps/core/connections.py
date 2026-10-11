@@ -202,7 +202,7 @@ def disconnect(sub_id, actor, reason='', ip=None):
     now = timezone.now()
     with transaction.atomic():
         try:
-            sub = Subscription.objects.select_for_update().select_related('customer', 'payment').get(pk=sub_id)
+            sub = Subscription.objects.select_for_update(of=('self',)).select_related('customer', 'payment').get(pk=sub_id)
         except Subscription.DoesNotExist:
             return False, 'Subscription not found.'
         if sub.status != Subscription.Status.ACTIVE:

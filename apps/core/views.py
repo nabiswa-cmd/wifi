@@ -1945,3 +1945,52 @@ def connection_disconnect(request, subscription_id):
                               ip=request.META.get('REMOTE_ADDR'))
     (messages.success if ok else messages.error)(request, msg)
     return redirect(_connection_back(request))
+
+
+# ---------------------------------------------------------------------------
+# Loyalty programme overview (read-only; rules are edited in Django admin)
+# ---------------------------------------------------------------------------
+@login_required(login_url='core:admin_login')
+def loyalty_overview(request):
+    from datetime import timedelta
+    from django.db.models import Sum
+    from apps.loyalty.models import LoyaltyConfig, LoyaltyReward, PointsLedger
+    from apps.vouchers.models import Voucher
+
+    if _staff_role_name(request.user) is None:
+        return HttpResponse('Forbidden.', status=403)
+
+    config = LoyaltyConfig.load()
+    now = timezone.now()
+    since = now - timedelta(days=30)
+
+    per_customer = (PointsLedger.objects.values('customer', 'customer__full_name', 'customer__phone_number')
+                    .annotate(balance=Sum('points')).filter(balance__gt=0).order_by('-balance'))
+    holders = list(per_customer)
+    outstanding = sum(h['balance'] for h in holders)
+
+    rewards = []
+    best_value = Decimal('0')
+    for r in LoyaltyReward.objects.select_related('package'):
+        rebate = r.rebate_percent(config)
+        offered = r.is_offerable(config)
+        if offered:
+            best_value = max(best_value, r.package.price / Decimal(r.points_cost))
+        rewards.append({'reward': r, 'rebate': rebate, 'offered': offered,
+                        'over_limit': rebate > config.max_rebate_percent,
+                        'spend_needed': Decimal(r.points_cost) * config.ksh_per_point})
+
+    last30 = PointsLedger.objects.filter(created_at__gte=since)
+    return render(request, 'core/loyalty_overview.html', {
+        'config': config,
+        'holders': holders[:10],
+        'holder_count': len(holders),
+        'outstanding': outstanding,
+        'liability_value': (best_value * outstanding).quantize(Decimal('1')),
+        'earned_30d': last30.filter(kind='EARN').aggregate(t=Sum('points'))['t'] or 0,
+        'redeemed_30d': -(last30.filter(kind='REDEEM').aggregate(t=Sum('points'))['t'] or 0),
+        'vouchers_out': Voucher.objects.filter(points_entry__isnull=False, status='UNUSED', expiry_date__gt=now).count(),
+        'vouchers_used': Voucher.objects.filter(points_entry__isnull=False, status='USED').count(),
+        'rewards': rewards,
+        'can_edit': _is_main_admin(request.user),
+    })

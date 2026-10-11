@@ -22,6 +22,7 @@
       <a href="{% url 'core:connections' %}" class="{% if request.resolver_match.url_name == 'connections' %}active{% endif %}">Connections</a>
       <a href="{% url 'core:packages' %}" class="{% if request.resolver_match.url_name == 'packages' %}active{% endif %}">Packages</a>
       <a href="{% url 'core:fup_monitor' %}" class="{% if request.resolver_match.url_name == 'fup_monitor' %}active{% endif %}">Usage &amp; FUP</a>
+      <a href="{% url 'core:loyalty' %}" class="{% if request.resolver_match.url_name == 'loyalty' %}active{% endif %}">Loyalty</a>
       <a href="{% url 'core:time_adjustments_log' %}" class="{% if request.resolver_match.url_name == 'time_adjustments_log' %}active{% endif %}">Time Adjustments Log</a>
       <a href="{% url 'core:vouchers' %}" class="{% if request.resolver_match.url_name == 'vouchers' %}active{% endif %}">Vouchers</a>
 

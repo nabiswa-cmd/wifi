@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'apps.billing',
     'apps.mikrotik',
     'apps.vouchers',
+    'apps.loyalty',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
