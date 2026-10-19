@@ -4,7 +4,7 @@
 {% block content %}
 <div style="text-align:center; padding:32px 16px 8px;">
   <div style="display:flex; align-items:center; justify-content:center; gap:14px;">
-   
+
     <h1 style="font-family:'Tangerine',cursive; font-size:3.2rem; font-weight:400; line-height:1; margin:0;">{{ branding.business_name }}</h1>
   </div>
   <p style="color:var(--color-text-muted);">{{ branding.portal_message }}</p>
@@ -28,7 +28,7 @@
   {% for package in packages %}
   <div class="card package-card">
     {% if package.is_featured %}
-    <img src="{% static 'images/s.png' %}" alt="Featured" class="featured-badge">
+    <img src="{% static 'images/s.png' %}" alt="Featured" class="featured-badge" width="52" height="52" decoding="async">
     {% endif %}
     <div class="package-head">
       <h3>{{ package.name }}</h3>
@@ -41,7 +41,7 @@
     <div class="package-body">
       <div class="price">{{ branding.currency }} {{ package.price|floatformat:"-2" }}</div>
       <p class="validity">Valid for {{ package.duration }} {{ package.get_duration_unit_display }}</p>
-      <button class="btn buy-btn" data-package-id="{{ package.id }}" data-package-name="{{ package.name }}">Select Plan</button>
+      <button class="btn buy-btn" data-package-id="{{ package.id }}" data-package-name="{{ package.name }}" data-package-price="{{ branding.currency }} {{ package.price|floatformat:'-2' }}">Select Plan</button>
     </div>
   </div>
   {% empty %}
@@ -49,53 +49,87 @@
   {% endfor %}
 </div>
 
-<!-- Purchase modal: everything happens here, no page navigation (Section 9). -->
-<div id="buy-modal-overlay" class="modal-overlay" hidden>
+<!-- Payment brand marks (referenced with <use>). Kept as a hidden sprite so each
+     logo is defined once and can be reused on the method list and the number step.
+     Swap these for the official brand SVGs if you have them. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="logo-mpesa" viewBox="0 0 96 32">
+    <rect x="0" y="3" width="26" height="26" rx="7" fill="#00A04A"/>
+    <rect x="8.2" y="8" width="9.6" height="16" rx="2.2" fill="none" stroke="#fff" stroke-width="1.8"/>
+    <circle cx="13" cy="20.6" r="1.1" fill="#fff"/>
+    <text x="33" y="23" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="-.2" fill="#00A04A">M<tspan fill="#E4262C">-</tspan>PESA</text>
+  </symbol>
+  <symbol id="logo-airtel" viewBox="0 0 96 32">
+    <rect x="0" y="3" width="26" height="26" rx="7" fill="#E40000"/>
+    <path d="M17.6 21.4c-1 .9-2.1 1.3-3.4 1.3-2.5 0-4.2-1.7-4.2-3.9s1.8-3.9 4.2-3.9c1.2 0 2.3.4 3.2 1.2v-1h2.4v7.4c0 .5.2.7.6.7v1.6c-.2.1-.5.1-.7.1-1.4 0-2.1-.6-2.1-1.5zm-2.9-4.8c-1.2 0-2.1.9-2.1 2.2s.9 2.2 2.1 2.2c1.3 0 2.2-.9 2.2-2.2s-.9-2.2-2.2-2.2z" fill="#fff"/>
+    <text x="33" y="23" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="700" letter-spacing="-.4" fill="#E40000">airtel</text>
+  </symbol>
+</svg>
+
+<!-- Checkout modal: everything happens here, no page navigation.
+     Step 1  "method"   pick M-Pesa or Airtel Money
+     Step 2  "phone"    enter the number that will receive the prompt
+     Step 3  "progress" Signal Gauge loader while the customer approves the
+                        STK push on their phone, then connects them.
+     The visuals for this modal live in the #buy-modal-overlay block in the
+     <style id="checkout-modal-css"> section below. -->
+<div id="buy-modal-overlay" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
   <div class="modal-card">
 
-    <!-- Step 1: phone number -->
-    <div id="modal-step-phone">
-      <h3 id="modal-package-name">Buy package</h3>
-      <input type="tel" id="modal-phone-input" placeholder="07XXXXXXXX" autocomplete="tel" inputmode="numeric">
-      <p id="modal-phone-error" class="badge badge-danger" hidden></p>
-      <div style="display:flex; gap:8px;">
-        <button class="btn" id="modal-pay-btn" style="flex:1;">Pay with M-Pesa</button>
-        <button class="btn btn-secondary" id="modal-cancel-btn" style="flex:1;">Cancel</button>
+    <div id="modal-head" class="bm-head">
+      <div class="bm-bar">
+        <h3 id="modal-title" class="bm-title">Checkout</h3>
+        <button type="button" class="bm-close" id="modal-close-btn" aria-label="Close checkout">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="bm-summary">
+        <span class="bm-summary-name" id="modal-package-name">Package</span>
+        <span class="bm-summary-price" id="modal-package-price"></span>
       </div>
     </div>
 
-    <!-- Step 2a: sending the request  short dot-pulse, distinct from the
-         longer wait below, so it's clear something is actively happening
-         right now rather than just sitting there. -->
-    <div id="modal-step-sending" hidden style="text-align:center;">
-      <div class="dot-pulse"><span></span><span></span><span></span></div>
-      <h3>Sending payment request…</h3>
-      <p style="color:var(--color-text-muted);">Talking to M-Pesa, one moment.</p>
+    <!-- Step 1: choose a payment method -->
+    <div id="modal-step-method" class="bm-body">
+      <p class="bm-heading">Pay with</p>
+
+      <button type="button" class="bm-method" data-provider="mpesa">
+        <svg class="bm-logo" viewBox="0 0 96 32" role="img" aria-label="M-Pesa"><use href="#logo-mpesa"/></svg>
+        <span class="bm-method-text">Safaricom prompt on your phone</span>
+        <svg class="bm-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+
+      <button type="button" class="bm-method" data-provider="airtel">
+        <svg class="bm-logo" viewBox="0 0 96 32" role="img" aria-label="Airtel Money"><use href="#logo-airtel"/></svg>
+        <span class="bm-method-text">Airtel Money prompt, paid to our till</span>
+        <svg class="bm-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
     </div>
 
-    <!-- Step 2b: waiting for the customer to enter their PIN (no full-page
-         load, just this stays put) -->
-    <div id="modal-step-waiting" hidden style="text-align:center;">
-      <div class="spinner"></div>
-      <h3>Check your phone</h3>
-      <p style="color:var(--color-text-muted);">Enter your M-Pesa PIN to complete the payment.</p>
-      <p class="badge badge-warning" id="modal-status-text">Waiting for confirmation…</p>
-      <button class="btn btn-secondary" id="modal-waiting-cancel-btn">Cancel</button>
+    <!-- Step 2: phone number -->
+    <div id="modal-step-phone" class="bm-body" hidden>
+      <div class="bm-phone-top">
+        <button type="button" class="bm-back" id="modal-back-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+          Change method
+        </button>
+        <svg class="bm-logo bm-logo-sm" id="modal-logo-mpesa" viewBox="0 0 96 32" role="img" aria-label="M-Pesa" hidden><use href="#logo-mpesa"/></svg>
+        <svg class="bm-logo bm-logo-sm" id="modal-logo-airtel" viewBox="0 0 96 32" role="img" aria-label="Airtel Money" hidden><use href="#logo-airtel"/></svg>
+      </div>
+
+      <label class="bm-label" for="modal-phone-input" id="modal-phone-label">M-Pesa phone number</label>
+      <input type="tel" id="modal-phone-input" placeholder="07XXXXXXXX" autocomplete="tel" inputmode="numeric">
+      <p id="modal-phone-error" class="bm-error" role="alert" hidden></p>
+      <p class="bm-hint" id="modal-hint">A prompt will appear on this number. Enter your PIN to finish.</p>
+
+      <button class="btn bm-pay" id="modal-pay-btn" type="button">
+        <span id="modal-pay-label">Pay</span>
+      </button>
     </div>
 
-    <!-- Step 3: result -->
-    <div id="modal-step-result" hidden style="text-align:center;">
-      <div id="modal-result-icon" style="margin:0 auto 8px;"></div>
-    <style>
-      .result-icon{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;animation:pop-in .35s cubic-bezier(.34,1.56,.64,1);}
-      .result-success{background:var(--color-primary-soft);color:var(--color-primary);border:3px solid var(--color-primary);}
-      .result-failure{background:#f8d7da;color:#c0392b;border:3px solid #c0392b;}
-      @keyframes pop-in{0%{transform:scale(0);opacity:0;}70%{transform:scale(1.1);}100%{transform:scale(1);opacity:1;}}
-      @media (max-width:480px){#buy-modal-overlay .card{width:92vw;padding:20px;}}
-    </style>
-      <h3 id="modal-result-title"></h3>
-      <p id="modal-result-message" style="color:var(--color-text-muted);"></p>
-      <button class="btn" id="modal-close-btn">Great, thanks!</button>
+    <!-- Step 3: Signal Gauge loader (mounted by the inline NabiswaConnect script at the bottom of this page) -->
+    <div id="modal-step-progress" class="bm-progress" hidden>
+      <div id="connect-loader"></div>
     </div>
 
   </div>
@@ -151,10 +185,10 @@
 </section>
 
 
-<section id="feedback" class="card" style="max-width:420px;margin:24px auto;background:transparent !important;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);">
+<section id="feedback" class="card" style="max-width:420px;margin:24px auto;">
   <h2 style="margin-top:0; font-family:'Tangerine',cursive; font-size:2.2rem; font-weight:400;">Recommendations &amp; Feedback</h2>
   <p style="color:var(--color-text-muted);font-size:.85rem;margin-top:0;">
-    Tell us how your experience has been, or send a request  we'll call you back on the number you leave below.
+    Tell us how your experience has been, or send a request &mdash; we'll call you back on the number you leave below.
   </p>
   <form id="feedback-form">
     {% csrf_token %}
@@ -172,7 +206,7 @@
 
 <section id="shareholder-login" class="card" style="max-width:420px;margin:24px auto 48px;">
   <h2 style="margin-top:0; font-family:'Tangerine',cursive; font-size:2.2rem; font-weight:400;">Admin Login</h2>
- 
+
   <form id="shareholder-login-form">
     {% csrf_token %}
     <input type="text" id="shareholder-username-input" name="username" placeholder="Username" required>
@@ -248,7 +282,7 @@
     <div class="lp-center lp-muted">points</div>
     <div class="lp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="points-progress"><span id="points-bar"></span></div>
     <div class="lp-center lp-muted" id="points-next"></div>
-    <div class="lp-center" style="margin-top:8px;">Updates automatically</span></div>
+    <div class="lp-center" style="margin-top:8px;"><span class="lp-live"><i></i>Updates automatically</span></div>
 
     <!-- Voucher ready (shows right after claiming, and again later while it is still unused) -->
     <div class="lp-box" id="points-voucher" hidden>
@@ -289,45 +323,568 @@
 <div class="toast-stack" id="connectionToastStack">
   <div class="toast toast-plain" id="connectionToast">
     <span class="toast-icon"><i class="bi bi-info-lg"></i></span>
-    <span class="toast-msg">Offline?Enter your M-Pesa code below
-</span>
+    <span class="toast-msg">Offline? Enter your M-Pesa code below</span>
     <button class="toast-close" type="button" aria-label="Dismiss" id="connectionToastClose">&times;</button>
   </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
+<style id="signal-gauge-css">
+/* =========================================================
+   NABISWA LOGIC WIFI — SIGNAL GAUGE LOADER (phase-aware)
+   An instrument dial. One arc travels the ring every 2.4 s. The loader
+   root carries data-step="0..4" (set by NabiswaConnect), and each phase
+   changes what the dial shows:
+
+     0 Request     Wi-Fi mark pulses, a ping leaves the centre
+     1 PIN         Wi-Fi mark gives way to four PIN dots that fill in
+     2 Paid        a green check draws itself, ticks fill to 50 %
+     3 Connecting  Wi-Fi mark returns with two arcs locked, third seeking
+     4 Online      ring closes in green, all arcs locked
+     failed        everything stops in red
+
+   The ring ticks double as a progress scale (0 / 20 / 50 / 80 / 100 %).
+   No colours of its own: everything resolves from the theme tokens, so it
+   follows the light and dark themes and the device setting.
+   Embedded in this template (landing.html) so it can never be missed by a
+   cached or un-collected theme.css.
+   ========================================================= */
+
+/* ---------- loader layout ---------- */
+.link-loader { display: flex; flex-direction: column; align-items: center; width: 100%; text-align: center; }
+.ll-scene { width: 100%; margin: 0 auto 12px; }
+.ll-title { margin: 0; color: var(--color-text); font-family: 'Jost','Inter',sans-serif; font-size: 1.3rem; font-weight: 650; letter-spacing: -.02em; line-height: 1.25; }
+.ll-sub { margin: 6px 0 0; min-height: 2.5em; max-width: 270px; color: var(--color-text-muted); font-size: .84rem; line-height: 1.45; }
+.ll-note { max-width: 260px; margin: 8px 0 0; color: var(--color-text-muted); font-size: .76rem; line-height: 1.45; opacity: 0; transition: opacity .4s ease; }
+.ll-note.show { opacity: 1; }
+.ll-cancel-wrap { display: none; margin-top: 14px; }
+.link-loader[data-step="0"]:not(.is-failed) .ll-cancel-wrap,
+.link-loader[data-step="1"]:not(.is-failed) .ll-cancel-wrap { display: block; }
+.ll-cancel-wrap .btn { font-size: .88rem; padding: 9px 22px; }
+.ll-actions { display: none; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+.link-loader.is-failed .ll-actions { display: flex; }
+.ll-actions .btn { text-decoration: none; font-size: .88rem; }
+.link-loader[data-step="4"] .ll-title { color: var(--status-success); }
+.link-loader.is-failed .ll-title { color: var(--status-danger); }
+
+/* ---------- gauge ---------- */
+.sg {
+  --sg-ink:   var(--color-text);
+  --sg-dim:   color-mix(in srgb, var(--color-text) 14%, transparent);
+  --sg-faint: color-mix(in srgb, var(--color-text) 32%, transparent);
+  --sg-run:   var(--color-primary);
+  --sg-done:  color-mix(in srgb, var(--color-primary) 70%, transparent);
+  --sg-ok:    var(--status-success);
+  --sg-bad:   var(--status-danger);
+  --sg-t:     2.4s;
+  position: relative; width: 100%; height: 100%;
+  animation: sg-in .45s ease-out both;
+}
+.sg svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.ll-scene.ll-wifi { width: 144px; height: 144px; max-width: none; margin: 0 auto 12px; }
+
+/* ring + travelling arc + closing ring */
+.sg-ring { fill: none; stroke: var(--sg-dim); stroke-width: 1.5; transition: stroke .35s ease; }
+.sg-run { transform-box: view-box; transform-origin: 100px 100px; animation: sg-turn var(--sg-t) linear infinite; transition: opacity .25s ease; }
+.sg-run circle { fill: none; stroke: var(--sg-run); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 22 78; }
+.sg-done { fill: none; stroke: var(--sg-ok); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; }
+
+/* dial ticks = progress scale. --sg-base is the resting colour of a tick */
+.sg-tick { --sg-base: var(--sg-dim); stroke: var(--sg-base); stroke-width: 1.5; stroke-linecap: round;
+           animation: sg-tick var(--sg-t) linear infinite; animation-delay: calc(var(--i) * .04s - 1.824s); transition: stroke .35s ease; }
+.sg-tick.major { stroke-width: 2.2; }
+.link-loader[data-step="1"] .sg-tick:nth-child(-n+12),
+.link-loader[data-step="2"] .sg-tick:nth-child(-n+30),
+.link-loader[data-step="3"] .sg-tick:nth-child(-n+48),
+.link-loader[data-step="4"] .sg-tick { --sg-base: var(--sg-done); }
+
+/* centre: three interchangeable components */
+.sg-wifi, .sg-pin, .sg-check { transition: opacity .3s ease, transform .3s ease; transform-box: fill-box; transform-origin: center; }
+
+/* (a) Wi-Fi mark */
+.sg-arc { fill: none; stroke: var(--sg-faint); stroke-width: 6.5; stroke-linecap: round; animation: sg-pulse var(--sg-t) ease-in-out infinite; transition: stroke .3s ease; }
+.sg-a1 { animation-delay: 0s; }
+.sg-a2 { animation-delay: .22s; }
+.sg-a3 { animation-delay: .44s; }
+.sg-dot { fill: var(--sg-ink); transition: fill .3s ease; }
+
+/* (b) PIN dots (phase 1) */
+.sg-pin { opacity: 0; transform: scale(.85); }
+.sg-pin circle { fill: var(--sg-run); opacity: .2; animation: sg-pin 1.6s ease-in-out infinite; }
+.sg-pin circle:nth-child(2) { animation-delay: .25s; }
+.sg-pin circle:nth-child(3) { animation-delay: .5s; }
+.sg-pin circle:nth-child(4) { animation-delay: .75s; }
+
+/* (c) payment check (phase 2) */
+.sg-check { fill: none; stroke: var(--sg-ok); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round;
+            stroke-dasharray: 52; stroke-dashoffset: 52; opacity: 0; transform: scale(.85); }
+
+/* ping that leaves the centre while a request is going out (phases 0 and 3) */
+.sg-ping { fill: none; stroke: var(--sg-run); stroke-width: 1.5; opacity: 0; transform-box: fill-box; transform-origin: center; }
+.link-loader[data-step="0"] .sg-ping, .link-loader[data-step="3"] .sg-ping { animation: sg-ping 1.8s ease-out infinite; }
+
+/* phase 1 and 2: Wi-Fi mark steps aside */
+.link-loader[data-step="1"] .sg-wifi, .link-loader[data-step="2"] .sg-wifi { opacity: 0; transform: scale(.85); }
+.link-loader[data-step="1"] .sg-pin { opacity: 1; transform: none; }
+.link-loader[data-step="2"] .sg-check { opacity: 1; transform: none; animation: sg-check .5s .1s ease-out forwards; }
+.link-loader[data-step="3"] .sg-check, .link-loader[data-step="4"] .sg-check { stroke-dashoffset: 0; opacity: 0; }
+
+/* progress: lock one Wi-Fi arc per stage */
+.link-loader.reach-1 .sg-a1,
+.link-loader.reach-2 .sg-a1, .link-loader.reach-2 .sg-a2,
+.link-loader.reach-3 .sg-a1, .link-loader.reach-3 .sg-a2, .link-loader.reach-3 .sg-a3 { stroke: var(--sg-run); animation: none; }
+
+/* success */
+.link-loader.is-success .sg-run { opacity: 0; animation-play-state: paused; }
+.link-loader.is-success .sg-ping { animation: none; }
+.link-loader.is-success .sg-ring { stroke: color-mix(in srgb, var(--sg-ok) 30%, transparent); }
+.link-loader.is-success .sg-done { animation: sg-close .8s cubic-bezier(.65,0,.25,1) forwards; }
+.link-loader.is-success .sg-tick { animation: none; stroke: color-mix(in srgb, var(--sg-ok) 55%, transparent); }
+.link-loader.is-success .sg-arc { animation: none; stroke: var(--sg-ok); }
+.link-loader.is-success .sg-dot { fill: var(--sg-ok); }
+
+/* failure: whatever phase it stopped in, show the Wi-Fi mark in red */
+.link-loader.is-failed .sg-run { opacity: 0; animation-play-state: paused; }
+.link-loader.is-failed .sg-ping { animation: none; }
+.link-loader.is-failed .sg-ring { stroke: color-mix(in srgb, var(--sg-bad) 45%, transparent); }
+.link-loader.is-failed .sg-tick { animation: none; stroke: color-mix(in srgb, var(--sg-bad) 35%, transparent); }
+.link-loader.is-failed .sg-wifi { opacity: 1; transform: none; }
+.link-loader.is-failed .sg-pin, .link-loader.is-failed .sg-check { opacity: 0; }
+.link-loader.is-failed .sg-arc { animation: none; stroke: var(--sg-bad); opacity: .55; }
+.link-loader.is-failed .sg-dot { fill: var(--sg-bad); }
+
+@keyframes sg-in    { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes sg-turn  { to { transform: rotate(360deg); } }
+@keyframes sg-tick  { 0% { stroke: var(--sg-run); } 30%, 100% { stroke: var(--sg-base); } }
+@keyframes sg-pulse { 0%, 100% { stroke: var(--sg-faint); } 24%, 40% { stroke: var(--sg-run); } 64% { stroke: var(--sg-faint); } }
+@keyframes sg-pin   { 0%, 100% { opacity: .2; } 40%, 60% { opacity: 1; } }
+@keyframes sg-check { to { stroke-dashoffset: 0; } }
+@keyframes sg-ping  { 0% { transform: scale(.3); opacity: .5; } 100% { transform: scale(1); opacity: 0; } }
+@keyframes sg-close { to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sg, .sg * { animation: none !important; transition: none !important; }
+  .sg-arc { stroke: var(--sg-run); opacity: .6; }
+  .link-loader[data-step="2"] .sg-check { stroke-dashoffset: 0; }
+  .sg-ping { display: none; }
+}
+</style>
+
+<style id="checkout-modal-css">
+/* =========================================================
+   CHECKOUT MODAL
+   Flat, opaque, quiet. One surface, one hairline border, one soft shadow.
+   No glass, no gradients, no glow. Brand colour appears only in the
+   payment logos; the pay button uses the site's own primary colour.
+
+   Every selector starts with #buy-modal-overlay so these rules win over
+   the older glass-modal rules in theme.css without editing that file.
+   ========================================================= */
+#buy-modal-overlay.modal-overlay {
+  background: rgba(10, 16, 24, .56);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  padding: 16px;
+}
+
+#buy-modal-overlay .modal-card,
+[data-theme="dark"] #buy-modal-overlay .modal-card,
+#buy-modal-overlay .modal-card.is-connecting,
+[data-theme="dark"] #buy-modal-overlay .modal-card.is-connecting {
+  position: relative; isolation: auto; overflow: hidden;
+  width: 100%; max-width: 400px; padding: 0;
+  text-align: left;
+  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, .26);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  animation: bm-in .16s ease-out;
+}
+#buy-modal-overlay .modal-card::before { content: none; }
+@keyframes bm-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* header: title, close, and the order summary */
+.bm-head { padding: 16px 20px 16px; border-bottom: 1px solid var(--color-border); }
+.bm-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+#buy-modal-overlay .bm-title { margin: 0; font-size: .95rem; font-weight: 650; letter-spacing: -.005em; color: var(--color-text); }
+.bm-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; margin: -4px -6px -4px 0; padding: 0;
+  border: 0; border-radius: 8px; background: transparent;
+  color: var(--color-text-muted); cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+.bm-close:hover { background: var(--color-surface-alt); color: var(--color-text); }
+.bm-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.bm-summary-name { font-size: 1.05rem; font-weight: 600; letter-spacing: -.01em; color: var(--color-text); }
+.bm-summary-price { font-size: 1.05rem; font-weight: 700; letter-spacing: -.01em; color: var(--color-text); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* body */
+.bm-body { padding: 20px; }
+.bm-heading { margin: 0 0 10px; font-size: .82rem; font-weight: 600; color: var(--color-text-muted); }
+
+/* step 1: payment method rows */
+.bm-method {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  margin: 0 0 10px; padding: 14px 14px 14px 16px;
+  text-align: left; font: inherit; color: var(--color-text);
+  background: transparent; border: 1px solid var(--color-border); border-radius: 10px;
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+.bm-method:last-child { margin-bottom: 0; }
+.bm-method:hover { border-color: var(--color-text-muted); background: var(--color-surface-alt); }
+.bm-method:active { background: var(--color-surface-alt); }
+.bm-method:focus-visible, .bm-back:focus-visible, .bm-close:focus-visible, .bm-pay:focus-visible {
+  outline: 2px solid var(--color-primary); outline-offset: 2px;
+}
+.bm-logo { display: block; flex: none; width: 84px; height: 28px; }
+.bm-logo-sm { width: 78px; height: 26px; }
+.bm-method-text { flex: 1; font-size: .8rem; line-height: 1.35; color: var(--color-text-muted); }
+.bm-chevron { flex: none; color: var(--color-text-muted); }
+
+/* step 2: number entry */
+.bm-phone-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.bm-back {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: -4px; padding: 4px 6px;
+  font: inherit; font-size: .82rem; font-weight: 600; color: var(--color-text-muted);
+  background: transparent; border: 0; border-radius: 6px; cursor: pointer;
+  transition: color .15s ease;
+}
+.bm-back:hover { color: var(--color-text); }
+.bm-label { display: block; margin: 0 0 6px; font-size: .82rem; font-weight: 600; color: var(--color-text); }
+#buy-modal-overlay .modal-card input {
+  display: block; width: 100%; margin: 0; padding: 12px 14px;
+  font-size: 1.05rem; font-weight: 500; letter-spacing: .02em; font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border); border-radius: 10px;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+#buy-modal-overlay .modal-card input::placeholder { color: var(--color-text-muted); opacity: .7; letter-spacing: .02em; font-weight: 400; }
+#buy-modal-overlay .modal-card input:focus {
+  outline: none; border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+.bm-error { margin: 8px 0 0; font-size: .8rem; line-height: 1.4; color: var(--status-danger); }
+.bm-hint { margin: 10px 0 0; font-size: .8rem; line-height: 1.5; color: var(--color-text-muted); }
+#buy-modal-overlay .btn.bm-pay {
+  display: block; width: 100%; margin-top: 20px; padding: 13px 18px;
+  font-size: .95rem; font-weight: 650; letter-spacing: .005em;
+  color: var(--color-on-primary); background: var(--color-primary);
+  border: 0; border-radius: 10px; box-shadow: none;
+  transition: filter .15s ease, transform .15s ease;
+}
+#buy-modal-overlay .btn.bm-pay:hover { filter: brightness(1.07); transform: none; }
+#buy-modal-overlay .btn.bm-pay:active { filter: brightness(.95); }
+
+/* step 3: loader */
+.bm-progress { padding: 28px 20px 24px; }
+
+@media (max-width: 480px) {
+  #buy-modal-overlay .modal-card { max-height: calc(100dvh - 24px); overflow-y: auto; }
+  .bm-method-text { font-size: .76rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #buy-modal-overlay .modal-card { animation: none; }
+}
+</style>
+
+<style id="perf-overrides">
+/* =========================================================
+   PERFORMANCE
+   backdrop-filter blur is the most expensive thing this page paints: every
+   card and the footer re-blur the background photo on load and on scroll,
+   which is slow on budget Android phones. Cards now use a near-solid theme
+   surface instead, which also reads cleaner. The !important flags are there
+   only to win over the older glass rules in theme.css.
+   ========================================================= */
+.card.package-card,
+#reconnect.card,
+#shareholder-login.card,
+#feedback.card,
+#points.card,
+.site-footer {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: var(--color-surface) !important;
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent) !important;
+}
+
+/* The floating background circles animate forever. On phones that keeps the
+   GPU busy for pure decoration, so they stay still there. */
+@media (max-width: 800px), (prefers-reduced-motion: reduce) {
+  .bg-circle { animation: none !important; }
+}
+</style>
+
+<!-- Nabiswa Logic WiFi: Signal Gauge loader (payment + connection). Inlined so no separate JS file is needed. -->
+<script>
+/* =========================================================
+   Nabiswa Logic WiFi — payment / connection loader
+   (Inlined in this template; no separate JS file.)
+
+   The picture is the phase-aware "Signal Gauge" (see the <style id="signal-gauge-css">
+   block just above). The loader root carries data-step="0..4"
+   and the CSS decides what the dial shows for each phase. Success closes
+   the ring in green, failure stops it in red. No colours of its own: it
+   follows the light and dark themes.
+
+   One loader for the whole checkout, from the moment the customer taps
+   "Pay" until they are online. The copy follows the chosen provider
+   (opts.providerName, e.g. "M-Pesa" or "Airtel Money"):
+
+     0  Sending payment request     "Talking to <provider>, one moment."
+     1  Check your phone            "Enter your <provider> PIN to complete the payment."
+     2  Payment received            (auto-moves on after a few seconds)
+     3  Setting up your connection
+     4  You're online
+
+   Usage:
+     var loader = NabiswaConnect.mount(document.getElementById('connect-loader'), {
+       providerName: 'Airtel Money',
+       onCancel:  function () { cancelPayment(); closeModal(); },
+       onRetry:   function () { startPayment(); },
+       onSuccess: function () { window.location.href = redirectUrl; }
+     });
+
+     loader.awaitPin();   // STK push accepted, PIN prompt is on the phone
+     loader.paid();       // payment confirmed (auto-moves to "Setting up your connection")
+     loader.success();    // hotspot login finished
+     loader.fail('Payment was cancelled.', 'Payment not completed');  // heading optional
+     // opts.onClose (optional) adds a Close button to the failure screen
+   ========================================================= */
+(function (global) {
+  'use strict';
+
+  function buildCopy(provider) {
+    return [
+      { title: 'Sending payment request',    sub: 'Talking to ' + provider + ', one moment.' },
+      { title: 'Check your phone',           sub: 'Enter your ' + provider + ' PIN to complete the payment.' },
+      { title: 'Payment received',           sub: 'Your payment went through. We are activating your access.' },
+      { title: 'Setting up your connection', sub: 'Opening your connection to the internet.' },
+      { title: "You're online",              sub: 'Enjoy browsing. You can close this window.' }
+    ];
+  }
+
+  /* Signal Gauge: ring, 60 dial ticks (every 5th major), one travelling arc, a
+     closing ring, and three interchangeable centre parts that the phase picks
+     between: Wi-Fi mark (dot + 3 arcs), PIN dots, payment check. */
+  var SG_TICKS = '';
+  for (var t = 0; t < 60; t++) {
+    var major = t % 5 === 0;
+    SG_TICKS += '<line class="sg-tick' + (major ? ' major' : '') + '" style="--i:' + t + '" x1="100" y1="' + (major ? 21 : 23) + '" x2="100" y2="29" transform="rotate(' + (t * 6) + ' 100 100)"/>';
+  }
+
+  var WIFI_SVG =
+    '<div class="sg" aria-hidden="true"><svg viewBox="0 0 200 200" fill="none">' +
+      '<circle class="sg-ring" cx="100" cy="100" r="92"/>' +
+      '<g class="sg-ticks">' + SG_TICKS + '</g>' +
+      '<g class="sg-run"><circle cx="100" cy="100" r="92" pathLength="100" transform="rotate(-90 100 100)"/></g>' +
+      '<circle class="sg-done" cx="100" cy="100" r="92" pathLength="100" transform="rotate(-90 100 100)"/>' +
+      '<circle class="sg-ping" cx="100" cy="100" r="60"/>' +
+      '<g class="sg-wifi">' +
+        '<path class="sg-arc sg-a3" d="M66.1 88.1 A48 48 0 0 1 133.9 88.1"/>' +
+        '<path class="sg-arc sg-a2" d="M77.4 99.4 A32 32 0 0 1 122.6 99.4"/>' +
+        '<path class="sg-arc sg-a1" d="M88.7 110.7 A16 16 0 0 1 111.3 110.7"/>' +
+        '<circle class="sg-dot" cx="100" cy="122" r="5"/>' +
+      '</g>' +
+      '<g class="sg-pin"><circle cx="79" cy="100" r="4.6"/><circle cx="93" cy="100" r="4.6"/><circle cx="107" cy="100" r="4.6"/><circle cx="121" cy="100" r="4.6"/></g>' +
+      '<path class="sg-check" d="M83 101 L96 114 L119 87"/>' +
+    '</svg></div>';
+
+  var TEMPLATE =
+    '<div class="link-loader" role="status" aria-live="polite" data-step="0">' +
+      '<div class="ll-scene ll-wifi" aria-hidden="true">' + WIFI_SVG + '</div>' +
+      '<h3 class="ll-title"></h3>' +
+      '<p class="ll-sub"></p>' +
+      '<p class="ll-note"></p>' +
+      '<div class="ll-cancel-wrap"><button type="button" class="btn btn-secondary ll-cancel">Cancel</button></div>' +
+      '<div class="ll-actions">' +
+        '<button type="button" class="btn ll-retry">Try again</button>' +
+        '<button type="button" class="btn btn-secondary ll-close" hidden>Close</button>' +
+        '<a class="btn btn-secondary ll-support" href="tel:+254792390205">Call support</a>' +
+      '</div>' +
+    '</div>';
+
+  function mount(container, options) {
+    if (!container) return null;
+    var opts = options || {};
+    var COPY = buildCopy(opts.providerName || 'M-Pesa');
+    var advanceAfter   = opts.advanceAfter   == null ? 3500  : opts.advanceAfter;
+    var pinNoteAfter   = opts.pinNoteAfter   == null ? 45000 : opts.pinNoteAfter;
+    var delayNoteAfter = opts.delayNoteAfter == null ? 25000 : opts.delayNoteAfter;
+    var successDelay   = opts.successDelay   == null ? 1800  : opts.successDelay;
+
+    container.innerHTML = TEMPLATE;
+    var root = container.querySelector('.link-loader');
+    var title = root.querySelector('.ll-title');
+    var sub = root.querySelector('.ll-sub');
+    var note = root.querySelector('.ll-note');
+    var modalCard = container.closest ? container.closest('.modal-card') : null;
+    if (modalCard) modalCard.classList.add('is-connecting');
+
+    var timers = [];
+    var state = { step: 0, finished: false };
+
+    function later(fn, ms) { var id = setTimeout(fn, ms); timers.push(id); return id; }
+    function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+    function showNote(text) { note.textContent = text; note.classList.add('show'); }
+    function hideNote() { note.classList.remove('show'); }
+
+    function render(step) {
+      state.step = step;
+      root.setAttribute('data-step', step);
+      var reach = Math.max(0, Math.min(3, step - 1));
+      for (var n = 1; n <= 3; n++) root.classList.toggle('reach-' + n, n <= reach);
+      title.textContent = COPY[step].title;
+      sub.textContent = COPY[step].sub;
+    }
+
+    function go(step) {
+      if (state.finished || step <= state.step && step !== 0) return;
+      clearTimers();
+      hideNote();
+      render(step);
+      if (step === 1 && pinNoteAfter > 0) {
+        later(function () {
+          showNote('No prompt yet? Check that your phone is on and has network, then keep this page open.');
+        }, pinNoteAfter);
+      }
+      if (step === 2) {
+        if (advanceAfter > 0) later(function () { go(3); }, advanceAfter);
+      }
+      if (step >= 2 && delayNoteAfter > 0) {
+        later(function () {
+          showNote('This is taking a little longer than usual. Keep this page open and we will connect you automatically.');
+        }, delayNoteAfter);
+      }
+    }
+
+    function success() {
+      if (state.finished) return;
+      state.finished = true;
+      clearTimers();
+      hideNote();
+      root.classList.remove('is-failed');
+      root.classList.add('is-success');
+      render(4);
+      if (typeof opts.onSuccess === 'function') later(opts.onSuccess, successDelay);
+    }
+
+    function fail(message, heading) {
+      if (state.finished) return;
+      state.finished = true;
+      clearTimers();
+      hideNote();
+      root.classList.remove('is-success');
+      root.classList.add('is-failed');
+      title.textContent = heading || 'Connection not completed';
+      sub.textContent = message || 'We could not finish connecting you. Try again, or call support.';
+    }
+
+    function restart() {
+      clearTimers();
+      state.finished = false;
+      root.classList.remove('is-success', 'is-failed', 'reach-1', 'reach-2', 'reach-3');
+      hideNote();
+      state.step = 0;
+      render(0);
+    }
+
+    root.querySelector('.ll-retry').addEventListener('click', function () {
+      restart();
+      if (typeof opts.onRetry === 'function') opts.onRetry();
+    });
+
+    var closeBtn = root.querySelector('.ll-close');
+    if (typeof opts.onClose === 'function') {
+      closeBtn.hidden = false;
+      closeBtn.addEventListener('click', opts.onClose);
+    }
+
+    root.querySelector('.ll-cancel').addEventListener('click', function () {
+      if (typeof opts.onCancel === 'function') opts.onCancel();
+    });
+
+    function destroy() {
+      clearTimers();
+      if (modalCard) modalCard.classList.remove('is-connecting');
+      container.innerHTML = '';
+    }
+
+    render(0);
+
+    return {
+      request:    restart,
+      awaitPin:   function () { go(1); },
+      paid:       function () { go(2); },
+      connecting: function () { go(3); },
+      success:    success,
+      fail:       fail,
+      restart:    restart,
+      destroy:    destroy
+    };
+  }
+
+  global.NabiswaConnect = { mount: mount, gauge: WIFI_SVG };
+})(window);
+</script>
+
 <script>
 (function () {
   const overlay = document.getElementById('buy-modal-overlay');
+  const modalHead = document.getElementById('modal-head');
+  const stepMethod = document.getElementById('modal-step-method');
   const stepPhone = document.getElementById('modal-step-phone');
-  const stepSending = document.getElementById('modal-step-sending');
-  const stepWaiting = document.getElementById('modal-step-waiting');
-  const stepResult = document.getElementById('modal-step-result');
+  const stepProgress = document.getElementById('modal-step-progress');
+  const loaderBox = document.getElementById('connect-loader');
   const packageNameEl = document.getElementById('modal-package-name');
+  const packagePriceEl = document.getElementById('modal-package-price');
+  const payLabelEl = document.getElementById('modal-pay-label');
   const phoneInput = document.getElementById('modal-phone-input');
+  const phoneLabel = document.getElementById('modal-phone-label');
   const phoneError = document.getElementById('modal-phone-error');
-  const statusText = document.getElementById('modal-status-text');
-  const resultIcon = document.getElementById('modal-result-icon');
-  const resultTitle = document.getElementById('modal-result-title');
-  const resultMessage = document.getElementById('modal-result-message');
-  const modalConnectBtn = document.getElementById('modal-connect-btn');
-  const modalResultConnectBtn = document.getElementById('modal-result-connect-btn');
-  const modalBrowseBtn = document.getElementById('modal-browse-btn');
+  const hintEl = document.getElementById('modal-hint');
   const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
-  // Passed through by the router's login.html redirect  mac identifies
+  // Passed through by the router's login.html redirect: mac identifies
   // this device so the agent knows which MAC to bypass on the router.
   const HOTSPOT_MAC = '{{ hotspot_mac|escapejs }}';
 
-  // Remember the customer's M-Pesa number on THIS device only (never sent anywhere
+  // Payment providers shown in the checkout. Both send an STK push to the
+  // customer's phone and share the same status polling. The only differences
+  // are the wording and the `provider` field sent to the server, so the
+  // billing view can route Airtel Money to the till. If your Airtel endpoint
+  // lives at its own URL, change `endpoint` for that entry.
+  const PROVIDERS = {
+    mpesa: {
+      name: 'M-Pesa',
+      label: 'M-Pesa phone number',
+      hint: 'A prompt will appear on this number. Enter your M-Pesa PIN to finish.',
+      phoneKey: 'nabiswa_last_phone',
+      endpoint: (id) => `/billing/buy/${id}/`,
+    },
+    airtel: {
+      name: 'Airtel Money',
+      label: 'Airtel Money phone number',
+      hint: 'A prompt will appear on this number. Enter your Airtel Money PIN to pay to our till.',
+      phoneKey: 'nabiswa_last_phone_airtel',
+      endpoint: (id) => `/billing/buy/${id}/`,
+    },
+  };
+  let currentProvider = 'mpesa';
+
+  // Remember the customer's number on THIS device only (never sent anywhere
   // except with the payment itself) so the next prompt is already filled in.
   const PHONE_KEY = 'nabiswa_last_phone';
-  function getSavedPhone() {
-    try { return window.localStorage.getItem(PHONE_KEY) || ''; } catch (e) { return ''; }
+  function getSavedPhone(key) {
+    try { return window.localStorage.getItem(key || PHONE_KEY) || ''; } catch (e) { return ''; }
   }
-  function savePhone(normalized) {
-    try { window.localStorage.setItem(PHONE_KEY, '0' + normalized.slice(3)); } catch (e) { /* private mode */ }
+  function savePhone(normalized, key) {
+    try { window.localStorage.setItem(key || PHONE_KEY, '0' + normalized.slice(3)); } catch (e) { /* private mode */ }
   }
   ['voucher-phone-input', 'feedback-phone-input'].forEach(function (id) {
     var el = document.getElementById(id);
@@ -336,26 +893,64 @@
 
   let currentPackageId = null;
   let pollTimer = null;
+  let activeSession = 0;      // bumped whenever a payment starts or the modal closes, so stale polls stop themselves
+  let loader = null;          // the Signal Gauge loader instance
   const POLL_INTERVAL_MS = 2500;
-  const MAX_WAIT_MS = 90000; // give up politely after 90s, not stuck forever
-  const HINT_AFTER_MS = 12000; // if still waiting this long, offer the M-Pesa code fallback
+  const MAX_WAIT_MS = 90000;  // give up politely after 90s, not stuck forever
+  const HINT_AFTER_MS = 12000; // if still waiting this long, pre-fill the M-Pesa code fallback
 
   // Where to send the customer once they're actually online. Swap this
-  // for wherever you want  your site, WhatsApp, anything.
+  // for wherever you want: your site, WhatsApp, anything.
   const SUCCESS_REDIRECT_URL = 'https://software-engineers.netlify.app/';
   function redirectToSuccess() {
     setTimeout(() => { window.location.href = SUCCESS_REDIRECT_URL; }, 2500);
   }
 
+  // 'method' -> choose provider, 'phone' -> enter number, 'progress' -> loader
   function showStep(step) {
+    stepMethod.hidden = step !== 'method';
     stepPhone.hidden = step !== 'phone';
-    stepSending.hidden = step !== 'sending';
-    stepWaiting.hidden = step !== 'waiting';
-    stepResult.hidden = step !== 'result';
+    stepProgress.hidden = step !== 'progress';
+    modalHead.hidden = step === 'progress';
   }
 
-  // Accepts however the customer typed it  0712345678, 0712 345 678,
-  // 0712-345-678, +254712345678, 254712345678, 712345678  and normalizes
+  function setProvider(key) {
+    currentProvider = key;
+    const p = PROVIDERS[key];
+    phoneLabel.textContent = p.label;
+    hintEl.textContent = p.hint;
+    document.getElementById('modal-logo-mpesa').hidden = key !== 'mpesa';
+    document.getElementById('modal-logo-airtel').hidden = key !== 'airtel';
+    phoneInput.value = getSavedPhone(p.phoneKey);
+    phoneError.hidden = true;
+  }
+
+  // ---- Signal Gauge loader lifecycle ----
+  function stopLoader() {
+    if (loader) { loader.destroy(); loader = null; }
+  }
+
+  function startLoader() {
+    stopLoader();
+    loader = NabiswaConnect.mount(loaderBox, {
+      providerName: PROVIDERS[currentProvider].name,
+      successDelay: 2500,
+      onSuccess: function () { window.location.href = SUCCESS_REDIRECT_URL; },
+      onCancel: closeModal,
+      onClose: closeModal,
+      // "Try again" goes back to the number step so the customer starts a fresh payment.
+      onRetry: function () {
+        activeSession++;
+        if (pollTimer) clearTimeout(pollTimer);
+        stopLoader();
+        showStep('phone');
+        phoneInput.focus();
+      },
+    });
+  }
+
+  // Accepts however the customer typed it: 0712345678, 0712 345 678,
+  // 0712-345-678, +254712345678, 254712345678, 712345678, and normalizes
   // to 2547XXXXXXXX. Mirrors apps/billing/utils.normalize_phone_number so
   // the customer gets instant feedback, but the server re-validates
   // regardless (this is a UX shortcut, not the source of truth).
@@ -374,100 +969,138 @@
     return /^254[71]\d{8}$/.test(digits) ? digits : null;
   }
 
-  function openModal(packageId, packageName) {
+  function openModal(packageId, packageName, packagePrice) {
     currentPackageId = packageId;
-    packageNameEl.textContent = 'Buy ' + packageName;
-    phoneInput.value = getSavedPhone();
-    phoneError.hidden = true;
-    showStep('phone');
+    packageNameEl.textContent = packageName;
+    packagePriceEl.textContent = packagePrice || '';
+    packagePriceEl.hidden = !packagePrice;
+    payLabelEl.textContent = packagePrice ? 'Pay ' + packagePrice : 'Pay';
+    stopLoader();
+    setProvider('mpesa');
+    showStep('method');
     overlay.hidden = false;
-    setTimeout(() => { phoneInput.focus(); if (phoneInput.value) phoneInput.select(); }, 50);
+    setTimeout(() => { const first = stepMethod.querySelector('.bm-method'); if (first) first.focus(); }, 50);
   }
 
   function closeModal() {
-    overlay.hidden = true;
+    activeSession++;               // any poll still in flight will now stop itself
     if (pollTimer) clearTimeout(pollTimer);
+    stopLoader();
+    overlay.hidden = true;
   }
 
   document.querySelectorAll('.buy-btn').forEach(btn => {
-    btn.addEventListener('click', () => openModal(btn.dataset.packageId, btn.dataset.packageName));
+    btn.addEventListener('click', () => openModal(btn.dataset.packageId, btn.dataset.packageName, btn.dataset.packagePrice));
   });
-  document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
-  document.getElementById('modal-waiting-cancel-btn').addEventListener('click', closeModal);
   document.getElementById('modal-close-btn').addEventListener('click', closeModal);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) closeModal(); });
 
+  // Step 1 -> 2: tapping a provider moves on to the number step.
+  stepMethod.querySelectorAll('.bm-method').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setProvider(btn.dataset.provider);
+      showStep('phone');
+      setTimeout(() => { phoneInput.focus(); if (phoneInput.value) phoneInput.select(); }, 50);
+    });
+  });
+  document.getElementById('modal-back-btn').addEventListener('click', () => {
+    phoneError.hidden = true;
+    showStep('method');
+  });
+
+  phoneInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('modal-pay-btn').click(); }
+  });
+
+  // Step 2 -> 3: send the STK push and show the loader while the customer approves it.
   document.getElementById('modal-pay-btn').addEventListener('click', async () => {
+    const provider = PROVIDERS[currentProvider];
     const normalized = normalizePhoneNumber(phoneInput.value);
     if (!normalized) {
-      phoneError.textContent = 'Enter a valid Safaricom number, e.g. 0712345678';
+      phoneError.textContent = 'Enter a valid phone number, e.g. 0712345678.';
       phoneError.hidden = false;
       return;
     }
     phoneError.hidden = true;
-    savePhone(normalized);
+    savePhone(normalized, provider.phoneKey);
+    if (currentProvider === 'mpesa') savePhone(normalized);   // shared with the voucher and points forms
 
-    // Phase 1: actively sending the request (short dot-pulse).
-    showStep('sending');
+    const session = ++activeSession;
+
+    // Loader opens on "Sending payment request".
+    startLoader();
+    showStep('progress');
 
     try {
-      const res = await fetch(`/billing/buy/${currentPackageId}/`, {
+      const res = await fetch(provider.endpoint(currentPackageId), {
         method: 'POST',
         headers: {
           'X-CSRFToken': csrfToken,
           'X-Requested-With': 'XMLHttpRequest',
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: `phone_number=${encodeURIComponent(normalized)}&mac=${encodeURIComponent(HOTSPOT_MAC)}`,
+        body: `phone_number=${encodeURIComponent(normalized)}&mac=${encodeURIComponent(HOTSPOT_MAC)}&provider=${encodeURIComponent(currentProvider)}`,
       });
       const data = await res.json();
+      if (session !== activeSession) return;
       if (!res.ok || !data.payment_id) {
-        showResult(false, 'Could not start payment', data.error || 'Please try again.');
+        loader.fail(data.error || 'Please try again.', 'Could not start payment');
         return;
       }
-      // Phase 2: request sent  now waiting on the customer to enter their PIN.
-      showStep('waiting');
-      statusText.textContent = 'Waiting for confirmation…';
-      pollPaymentStatus(data.payment_id, Date.now());
+      // Request sent: the PIN prompt is now on the customer's phone.
+      loader.awaitPin();
+      pollPaymentStatus(data.payment_id, Date.now(), session);
     } catch (err) {
-      showResult(false, 'Connection problem', 'Check your internet connection and try again.');
+      if (session !== activeSession) return;
+      loader.fail('Check your internet connection and try again.', 'Connection problem');
     }
   });
 
-  async function pollPaymentStatus(paymentId, startedAt) {
+  async function pollPaymentStatus(paymentId, startedAt, session) {
+    if (session !== activeSession) return;
+
     if (Date.now() - startedAt > MAX_WAIT_MS) {
-      showResult(false, 'Taking longer than expected',
-        "If you completed the M-Pesa prompt, your payment likely went through. Scroll down and paste your M-Pesa code or the whole confirmation message in the box below to connect   you won't be charged again.");
+      // Pre-fill the receipt so the reconnect box is ready when they close this window.
+      fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)
+        .then((r) => r.json())
+        .then((d) => prefillReconnect(d.receipt))
+        .catch(() => {});
+      if (loader) {
+        loader.fail(
+          "If you completed the payment prompt, your payment likely went through. Close this window and paste your M-Pesa code or the whole confirmation message in the reconnect box. You won't be charged again.",
+          'Taking longer than expected'
+        );
+      }
       return;
     }
+
     try {
       const res = await fetch(
         `/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`
       );
       const data = await res.json();
+      if (session !== activeSession) return;
+
       if (data.status === 'SUCCESS') {
         if (data.connected) {
-          showResult(true, "You're connected!", "Enjoy your Wi-Fi   taking you there now…");
-          redirectToSuccess();
+          loader.success();   // redirects via onSuccess after the short celebration
         } else {
-          // Payment's done, router's still catching up   keep the waiting
-          // UI up, but past a certain point pre-fill the code they already
-          // paid with down at the reconnect button, so they can just tap
-          // it instead of retyping/pasting anything.
-          if (Date.now() - startedAt > HINT_AFTER_MS) {
-            statusText.textContent = 'Still connecting… tap GET CONNECTED below to try again.';
-            prefillReconnect(data.receipt);
-          } else {
-            statusText.textContent = 'Payment received   connecting your device…';
-          }
-          pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+          // Payment's done, router's still catching up: show "Payment received"
+          // then "Setting up your connection", and past a certain point pre-fill the
+          // code they already paid with in the reconnect box as a safety net.
+          loader.paid();
+          if (Date.now() - startedAt > HINT_AFTER_MS) prefillReconnect(data.receipt);
+          pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt, session), POLL_INTERVAL_MS);
         }
-      } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {       showResult(false, 'Payment not completed', 'The transaction was ' + data.status.toLowerCase() + '. Try again.');
+      } else if (['FAILED', 'CANCELLED', 'TIMEOUT'].includes(data.status)) {
+        loader.fail('The transaction was ' + data.status.toLowerCase() + '. Try again.', 'Payment not completed');
       } else {
-        pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+        pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt, session), POLL_INTERVAL_MS);
       }
     } catch (err) {
-      pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt), POLL_INTERVAL_MS);
+      if (session !== activeSession) return;
+      pollTimer = setTimeout(() => pollPaymentStatus(paymentId, startedAt, session), POLL_INTERVAL_MS);
     }
   }
 
@@ -479,16 +1112,10 @@
     if (input && !input.value) input.value = receipt;
     if (btn) btn.textContent = 'GET CONNECTED';
     reconnectPrefilled = true;
-    document.getElementById('reconnect')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-
-  function showResult(success, title, message) {
-    resultIcon.innerHTML = success
-      ? '<div class="result-icon result-success"><i class="bi bi-check-lg"></i></div>'
-      : '<div class="result-icon result-failure"><i class="bi bi-x-lg"></i></div>';
-    resultTitle.textContent = title;
-    resultMessage.textContent = message;
-    showStep('result');
+    // Only jump down the page once the modal is out of the way.
+    if (overlay.hidden) {
+      document.getElementById('reconnect')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   }
 
   // --- Reconnect by M-Pesa code ---
@@ -513,13 +1140,9 @@
   }
 
   function pollReconnectStatus(paymentId, startedAt) {
-        if (Date.now() - startedAt > MAX_WAIT_MS) {
-      showResult(false, 'Taking longer than expected',
-        "If you completed the M-Pesa prompt, your payment likely went through   your code is already filled in below. Just tap GET CONNECTED. You won't be charged again.");
-      fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)
-        .then((r) => r.json())
-        .then((d) => prefillReconnect(d.receipt))
-        .catch(() => {});
+    if (Date.now() - startedAt > MAX_WAIT_MS) {
+      setReconnectStatus('error', "Taking longer than expected. Your code is already filled in, tap Reconnect again. You won't be charged again.");
+      reconnectSubmitBtn.disabled = false;
       return;
     }
     fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)
@@ -565,13 +1188,13 @@
         setReconnectStatus('loading', 'Connecting your device…');
         pollReconnectStatus(data.payment_id, Date.now());
       } catch (err) {
-        setReconnectStatus('error', 'kindly click reconnect again atleast 3times ,sorry for that then wait u are connected fully... ');
+        setReconnectStatus('error', 'Connection problem. Please tap Reconnect again in a few seconds.');
         reconnectSubmitBtn.disabled = false;
       }
     });
   }
 
-  // Voucher redemption   same loading-spinner-then-poll pattern as the
+  // Voucher redemption: same loading-spinner-then-poll pattern as the
   // M-Pesa reconnect box above.
   const voucherForm = document.getElementById('voucher-form');
   const voucherStatus = document.getElementById('voucher-status');
@@ -595,7 +1218,7 @@
 
   function pollVoucherStatus(voucherId, startedAt) {
     if (Date.now() - startedAt > MAX_WAIT_MS) {
-      setVoucherStatus('error', "Taking longer than expected   try tapping Connect again.");
+      setVoucherStatus('error', "Taking longer than expected. Try tapping Connect again.");
       voucherSubmitBtn.disabled = false;
       return;
     }
@@ -661,7 +1284,7 @@
     voucherForm.requestSubmit();
   })();
 
-  // --- Shareholder / Company login  stays right here on the landing
+  // --- Shareholder / Company login: stays right here on the landing
   // page; a successful sign-in moves on to the revenue portal the server
   // sends back, an invalid one just shows an inline message, no navigation
   // away from this page either way. ---
@@ -707,7 +1330,7 @@
           shLoginSubmitBtn.disabled = false;
           return;
         }
-        setShareholderLoginStatus('success', 'Signed in   taking you to your revenue portal…');
+        setShareholderLoginStatus('success', 'Signed in, taking you to your revenue portal…');
         window.location.href = data.redirect;
       } catch (err) {
         setShareholderLoginStatus('error', 'Something went wrong. Please try again.');
@@ -783,7 +1406,7 @@
     };
     const lookupForm = $('points-lookup-form'), lookupBtn = $('points-lookup-btn'), phoneField = $('points-phone-input');
     const view = $('points-view'), rewardsBox = $('points-rewards');
-    let state = null, lastPoints = null, confirmId = null, pollTimer = null;
+    let state = null, lastPoints = null, confirmId = null, pointsPollTimer = null;
 
     // ---- small helpers ----
     function post(url, body) {
@@ -872,10 +1495,7 @@
       });
       $('points-history-box').hidden = !(d.history && d.history.length);
 
-      let foot = 'Earn 1 point for every KSh ' + d.ksh_per_point + ' you spend with M-Pesa.';
-      if (d.includes_past) foot +=  ' ';
-      foot +='';
-      $('points-footnote').textContent = foot;
+      $('points-footnote').textContent = 'Earn 1 point for every KSh ' + d.ksh_per_point + ' you spend with M-Pesa.';
     }
 
     function refresh() {
@@ -976,14 +1596,18 @@
     });
 
     // ---- keep it fresh, but only while the section is actually on screen ----
-    function startPolling() { if (!pollTimer) pollTimer = setInterval(() => { if (!document.hidden && state && state.has_phone) refresh(); }, 15000); }
-    function stopPolling() { clearInterval(pollTimer); pollTimer = null; }
+    function startPolling() { if (!pointsPollTimer) pointsPollTimer = setInterval(() => { if (!document.hidden && state && state.has_phone) refresh(); }, 15000); }
+    function stopPolling() { clearInterval(pointsPollTimer); pointsPollTimer = null; }
     if ('IntersectionObserver' in window) {
       new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting) { if (state && state.has_phone) refresh(); startPolling(); } else { stopPolling(); }
       }).observe(pointsSection);
     }
-    refresh().then(() => { if (window.location.hash === '#points') goTo(pointsSection); });
+    // Not needed for first paint, so wait until the browser is idle before asking the server.
+    const whenIdle = window.requestIdleCallback || ((fn) => setTimeout(fn, 800));
+    whenIdle(() => {
+      refresh().then(() => { if (window.location.hash === '#points') goTo(pointsSection); });
+    }, { timeout: 2500 });
   }
 {% endif %}
 

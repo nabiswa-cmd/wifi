@@ -4,9 +4,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}{{ branding.business_name }}{% endblock %}</title>
+  <title>{% block title %}{{ branding.business_name }}{% endblock %}</title>
 
-  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicons/apple-touch-ico5883.jpg' %}">
+  <!-- FIX: the original filename "apple-touch-ico5883.jpg" looked like a find/replace accident.
+       Point this at your real 180x180 icon file. -->
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicons/apple-touch-icon.png' %}">
   <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicons/favicon-32x32.png' %}">
   <link rel="icon" type="image/png" sizes="16x16" href="{% static 'favicons/favicon-16x16.png' %}">
   <link rel="manifest" href="{% static 'favicons/site.webmanifest' %}">
@@ -20,38 +22,82 @@
   <link href="https://fonts.googleapis.com/css2?family=Inria+Serif:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Jost:ital,wght@0,100..900;1,100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css?family=Tangerine" rel="stylesheet">
 
-  <link rel="stylesheet" href="{% static 'css/theme.css' %}?v=7">
+  <!-- All loader styles (page loader + post-payment link loader) live in theme.css.
+       Version bumped to v=11 to bust the browser cache for the new Wi-Fi sweep loader. -->
+  <link rel="stylesheet" href="{% static 'css/theme.css' %}?v=11">
+
+  <!-- If JavaScript is off, never trap the visitor behind the loader -->
+  <noscript><style>.page-loader { display: none !important; }</style></noscript>
+
   {% block extra_head %}{% endblock %}
 </head>
 <body>
-  
+
+  <!-- Nabiswa Logic WiFi — full Wi-Fi loader (page load) -->
+  <div class="page-loader" id="page-loader" role="status"
+       aria-label="Connecting to the network" aria-live="polite">
+    <div class="wifi-loader">
+      <div class="signal-mark" aria-hidden="true">
+        <div class="wl-stage" aria-hidden="true">
+          <span class="wl-rb wl-rb-m"><span class="wl-rb-spin"></span></span>
+          <span class="wl-rb wl-rb-i"><span class="wl-rb-spin"></span></span>
+          <svg viewBox="0 0 200 200" fill="none">
+            <g class="wl-shift">
+              <g class="wl-ring wl-r1"><circle class="wl-white" cx="100" cy="100" r="26" pathLength="100"/><circle class="wl-tip wl-c1" cx="100" cy="100" r="26" pathLength="100"/><circle class="wl-tip wl-c2" cx="100" cy="100" r="26" pathLength="100"/><circle class="wl-tip wl-c3" cx="100" cy="100" r="26" pathLength="100"/><circle class="wl-tip wl-c4" cx="100" cy="100" r="26" pathLength="100"/></g>
+              <g class="wl-ring wl-r2"><circle class="wl-white" cx="100" cy="100" r="52" pathLength="100"/><circle class="wl-tip wl-c1" cx="100" cy="100" r="52" pathLength="100"/><circle class="wl-tip wl-c2" cx="100" cy="100" r="52" pathLength="100"/><circle class="wl-tip wl-c3" cx="100" cy="100" r="52" pathLength="100"/><circle class="wl-tip wl-c4" cx="100" cy="100" r="52" pathLength="100"/></g>
+              <g class="wl-ring wl-r3"><circle class="wl-white" cx="100" cy="100" r="78" pathLength="100"/><circle class="wl-tip wl-c1" cx="100" cy="100" r="78" pathLength="100"/><circle class="wl-tip wl-c2" cx="100" cy="100" r="78" pathLength="100"/><circle class="wl-tip wl-c3" cx="100" cy="100" r="78" pathLength="100"/><circle class="wl-tip wl-c4" cx="100" cy="100" r="78" pathLength="100"/></g>
+              <circle class="wl-dot" cx="100" cy="100" r="9"/>
+            </g>
+            <g class="wl-glyph">
+              <path d="M93.64 99.64 A9 9 0 0 1 106.36 99.64"/>
+              <path d="M88.69 94.69 A16 16 0 0 1 111.31 94.69"/>
+              <circle cx="100" cy="106" r="3.3"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+      <div class="brand-name">{{ branding.business_name|default:"Nabiswa Logic WiFi" }}</div>
+      <div class="wifi-caption">
+        <span class="wifi-caption-main">Connecting to your network</span>
+        <span class="wifi-caption-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      </div>
+      <div class="connection-track" aria-hidden="true">
+        <span class="connection-track-progress"></span>
+      </div>
+      <span class="connection-label">SIGNAL IN PROGRESS</span>
+    </div>
+  </div>
+
   <div class="app-shell">
+
     <header class="topbar">
       <div class="brand">
         {% if branding.logo %}<img src="{{ branding.logo.url }}" alt="{{ branding.business_name }}">{% endif %}
         <span style="font-family:'Tangerine',cursive; font-size:1.7rem; line-height:1;">{{ branding.business_name }}</span>
       </div>
       <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleNabiswaTheme()" title="Toggle theme" aria-label="Toggle light and dark theme">
-  <svg id="icon-sun" class="theme-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="12" cy="12" r="4"></circle>
-    <line x1="12" y1="2" x2="12" y2="4.5"></line>
-    <line x1="12" y1="19.5" x2="12" y2="22"></line>
-    <line x1="4.2" y1="4.2" x2="6" y2="6"></line>
-    <line x1="18" y1="18" x2="19.8" y2="19.8"></line>
-    <line x1="2" y1="12" x2="4.5" y2="12"></line>
-    <line x1="19.5" y1="12" x2="22" y2="12"></line>
-    <line x1="4.2" y1="19.8" x2="6" y2="18"></line>
-    <line x1="18" y1="6" x2="19.8" y2="4.2"></line>
-  </svg>
-  <svg id="icon-moon" class="theme-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
-    <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"></path>
-  </svg>
-  <span>Theme</span>
-</button>
+        <svg id="icon-sun" class="theme-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"></circle>
+          <line x1="12" y1="2" x2="12" y2="4.5"></line>
+          <line x1="12" y1="19.5" x2="12" y2="22"></line>
+          <line x1="4.2" y1="4.2" x2="6" y2="6"></line>
+          <line x1="18" y1="18" x2="19.8" y2="19.8"></line>
+          <line x1="2" y1="12" x2="4.5" y2="12"></line>
+          <line x1="19.5" y1="12" x2="22" y2="12"></line>
+          <line x1="4.2" y1="19.8" x2="6" y2="18"></line>
+          <line x1="18" y1="6" x2="19.8" y2="4.2"></line>
+        </svg>
+        <svg id="icon-moon" class="theme-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+          <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"></path>
+        </svg>
+        <span>Theme</span>
+      </button>
     </header>
+
     <main style="flex:1;">
       {% block content %}{% endblock %}
     </main>
+
     <footer class="site-footer">
       <div class="footer-grid">
 
@@ -67,7 +113,7 @@
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
             Call: 0792 390 205
           </a>
-          <a href="tel:+254792390205" class="footer-link footer-link-whatsapp">
+          <a href="https://wa.me/254792390205" class="footer-link footer-link-whatsapp">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.372-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.876 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.288.173-1.412-.074-.124-.272-.198-.57-.347z"/><path d="M12.004 2.003c-5.514 0-9.997 4.483-9.997 9.997 0 1.762.462 3.484 1.34 4.997L2 22l5.117-1.334a9.96 9.96 0 0 0 4.887 1.278h.004c5.514 0 9.997-4.483 9.997-9.997s-4.483-9.944-10.001-9.944zm0 18.166a8.163 8.163 0 0 1-4.163-1.14l-.298-.177-3.037.792.812-2.96-.194-.305a8.147 8.147 0 0 1-1.253-4.376c0-4.505 3.665-8.17 8.173-8.17 4.507 0 8.17 3.663 8.17 8.17 0 4.508-3.663 8.166-8.21 8.166z"/></svg>
             WhatsApp: 0792 390 205
           </a>
@@ -88,15 +134,41 @@
       </div>
     </footer>
   </div>
+
   <div class="fab-stack" aria-label="Contact options">
-    <a class="fab fab-whatsapp" href="tel:+254792390205" title="Call us" aria-label="Call us">
+    <a class="fab fab-whatsapp" href="https://wa.me/254792390205" title="WhatsApp us" aria-label="WhatsApp us">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.372-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.876 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.288.173-1.412-.074-.124-.272-.198-.57-.347z"/><path d="M12.004 2.003c-5.514 0-9.997 4.483-9.997 9.997 0 1.762.462 3.484 1.34 4.997L2 22l5.117-1.334a9.96 9.96 0 0 0 4.887 1.278h.004c5.514 0 9.997-4.483 9.997-9.997s-4.483-9.944-10.001-9.944zm0 18.166a8.163 8.163 0 0 1-4.163-1.14l-.298-.177-3.037.792.812-2.96-.194-.305a8.147 8.147 0 0 1-1.253-4.376c0-4.505 3.665-8.17 8.173-8.17 4.507 0 8.17 3.663 8.17 8.17 0 4.508-3.663 8.166-8.21 8.166z"/></svg>
     </a>
     <a class="fab fab-call" href="tel:+254792390205" title="Call me" aria-label="Call me">
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
     </a>
   </div>
+
   <script src="{% static 'js/theme.js' %}"></script>
+  <script>
+    /* Hide the WiFi loader once the page has loaded.
+       MIN_SHOW is 2600ms (was 700) so the Wi-Fi icon has time to sweep out into
+       the spinning rainbow rings before the loader fades. Lower it if you
+       want pages to appear faster on slow hotspot connections. */
+    (function () {
+      var MIN_SHOW = 2600;
+      var loader = document.getElementById('page-loader');
+      if (!loader) return;
+      var start = Date.now(), hidden = false;
+      function hide() {
+        if (hidden) return;
+        hidden = true;
+        var wait = Math.max(0, MIN_SHOW - (Date.now() - start));
+        setTimeout(function () {
+          loader.classList.add('done');
+          setTimeout(function () { loader.style.display = 'none'; }, 500);
+        }, wait);
+      }
+      if (document.readyState === 'complete') { hide(); }
+      else { window.addEventListener('load', hide); }
+      setTimeout(hide, 6000); /* safety net for slow hotspot connections */
+    })();
+  </script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>
