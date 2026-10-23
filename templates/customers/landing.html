@@ -475,7 +475,7 @@
 /* =========================================================
    CHECKOUT MODAL
    Flat, opaque, quiet. One surface, one hairline border, one soft shadow.
-   No glass, no gradients, no glow. Brand colour appears only in the
+   Glass card (translucent + blur), no gradients, no glow. Brand colour appears only in the
    payment logos; the pay button uses the site's own primary colour.
 
    Every selector starts with #buy-modal-overlay so these rules win over
@@ -495,17 +495,20 @@
   width: 100%; max-width: 400px; padding: 0;
   text-align: left;
   border-radius: 14px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  box-shadow: 0 20px 48px rgba(0, 0, 0, .26);
-  -webkit-backdrop-filter: none; backdrop-filter: none;
+  /* Frosted glass: translucent tint + blur so the page shows through.
+     One blurred element only, so it stays cheap on budget phones. */
+  background: rgba(255, 255, 255, .34);
+  background: color-mix(in srgb, var(--color-surface) 34%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, .22);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3); backdrop-filter: blur(16px) saturate(1.3);
   animation: bm-in .16s ease-out;
 }
 #buy-modal-overlay .modal-card::before { content: none; }
 @keyframes bm-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* header: title, close, and the order summary */
-.bm-head { padding: 16px 20px 16px; border-bottom: 1px solid var(--color-border); }
+.bm-head { padding: 16px 20px 16px; border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent); }
 .bm-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 #buy-modal-overlay .bm-title { margin: 0; font-size: .95rem; font-weight: 650; letter-spacing: -.005em; color: var(--color-text); }
 .bm-close {
@@ -515,7 +518,7 @@
   color: var(--color-text-muted); cursor: pointer;
   transition: background-color .15s ease, color .15s ease;
 }
-.bm-close:hover { background: var(--color-surface-alt); color: var(--color-text); }
+.bm-close:hover { background: color-mix(in srgb, var(--color-surface-alt) 50%, transparent); color: var(--color-text); }
 .bm-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
 .bm-summary-name { font-size: 1.05rem; font-weight: 600; letter-spacing: -.01em; color: var(--color-text); }
 .bm-summary-price { font-size: 1.05rem; font-weight: 700; letter-spacing: -.01em; color: var(--color-text); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -529,13 +532,13 @@
   display: flex; align-items: center; gap: 14px; width: 100%;
   margin: 0 0 10px; padding: 14px 14px 14px 16px;
   text-align: left; font: inherit; color: var(--color-text);
-  background: transparent; border: 1px solid var(--color-border); border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface) 22%, transparent); border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); border-radius: 10px;
   cursor: pointer;
   transition: border-color .15s ease, background-color .15s ease;
 }
 .bm-method:last-child { margin-bottom: 0; }
-.bm-method:hover { border-color: var(--color-text-muted); background: var(--color-surface-alt); }
-.bm-method:active { background: var(--color-surface-alt); }
+.bm-method:hover { border-color: var(--color-text-muted); background: color-mix(in srgb, var(--color-surface-alt) 55%, transparent); }
+.bm-method:active { background: color-mix(in srgb, var(--color-surface-alt) 65%, transparent); }
 .bm-method:focus-visible, .bm-back:focus-visible, .bm-close:focus-visible, .bm-pay:focus-visible {
   outline: 2px solid var(--color-primary); outline-offset: 2px;
 }
@@ -558,8 +561,8 @@
   display: block; width: 100%; margin: 0; padding: 12px 14px;
   font-size: 1.05rem; font-weight: 500; letter-spacing: .02em; font-variant-numeric: tabular-nums;
   color: var(--color-text);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border); border-radius: 10px;
+  background: color-mix(in srgb, var(--color-bg) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); border-radius: 10px;
   -webkit-backdrop-filter: none; backdrop-filter: none;
   transition: border-color .15s ease, box-shadow .15s ease;
 }
