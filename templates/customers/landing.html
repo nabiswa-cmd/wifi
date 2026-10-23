@@ -597,19 +597,25 @@
    PERFORMANCE
    backdrop-filter blur is the most expensive thing this page paints: every
    card and the footer re-blur the background photo on load and on scroll,
-   which is slow on budget Android phones. Cards now use a near-solid theme
-   surface instead, which also reads cleaner. The !important flags are there
-   only to win over the older glass rules in theme.css.
+   which is slow on budget Android phones. Blur is switched off here; the cards
+   stay transparent. The !important flags are there only to win over the older
+   glass rules in theme.css.
    ========================================================= */
+/* Cards stay transparent (same 18% tint as the rest of the glass UI) so the
+   background shows through. No backdrop blur, which keeps it fast on cheap phones. */
 .card.package-card,
 #reconnect.card,
 #shareholder-login.card,
 #feedback.card,
-#points.card,
+#points.card {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: rgba(255, 255, 255, .18) !important;
+  background: color-mix(in srgb, var(--color-surface) 18%, transparent) !important;
+}
 .site-footer {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
-  background: var(--color-surface) !important;
   background: color-mix(in srgb, var(--color-surface) 92%, transparent) !important;
 }
 
