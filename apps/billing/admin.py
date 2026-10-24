@@ -6,7 +6,7 @@ from django.utils.html import format_html
 
 from apps.mikrotik.services import connect_payment_device
 from .models import (
-    EarningsPeriod, Payment, ShareIncreaseRequest, Shareholder, ShareholderPayout, Subscription, WithdrawalRequest,
+    EarningsAdjustment, EarningsPeriod, Payment, ShareIncreaseRequest, Shareholder, ShareholderPayout, Subscription, WithdrawalRequest,
 )
 
 
@@ -148,10 +148,57 @@ class WithdrawalRequestAdmin(admin.ModelAdmin):
     search_fields = ('shareholder__full_name', 'payment_phone', 'payment_account_name')
     readonly_fields = ('decided_by', 'decided_at')
 
+class EarningsAdjustmentInline(admin.TabularInline):
+    """
+    The "increase or reduce" section. Add a row with a signed amount
+    (+500 / -200) and a reason. Saved rows are read-only on purpose: to
+    undo one, add an opposite row, so there is always a clean trail.
+    Only the open cycle can be adjusted; a closed one is already frozen.
+    """
+    model = EarningsAdjustment
+    extra = 1
+    fields = ('amount', 'note', 'created_by', 'created_at')
+    readonly_fields = ('created_by', 'created_at')
+
+    def has_add_permission(self, request, obj=None):
+        return obj is not None and obj.is_open and super().has_add_permission(request, obj)
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(EarningsPeriod)
 class EarningsPeriodAdmin(admin.ModelAdmin):
-    list_display = ('label', 'start_at', 'end_at', 'revenue', 'distributable_profit', 'paid_out_at')
-    readonly_fields = ('revenue', 'subscription_cost', 'distributable_profit', 'closed_by', 'paid_out_at', 'paid_out_by')
+    list_display = ('label', 'start_at', 'end_at', 'mpesa_total', 'adjustments', 'displayed_total',
+                    'distributable_profit', 'paid_out_at')
+    readonly_fields = ('mpesa_total', 'adjustments', 'displayed_total', 'revenue', 'subscription_cost',
+                       'distributable_profit', 'closed_by', 'paid_out_at', 'paid_out_by')
+    inlines = [EarningsAdjustmentInline]
+
+    @admin.display(description='M-Pesa total (calculated)')
+    def mpesa_total(self, obj):
+        return f'KSh {obj.compute_mpesa_revenue():,.2f}' if obj.pk else '-'
+
+    @admin.display(description='Manual adjustments')
+    def adjustments(self, obj):
+        return f'{obj.adjustment_total():+,.2f}' if obj.pk else '-'
+
+    @admin.display(description='Earnings shown on dashboard')
+    def displayed_total(self, obj):
+        if not obj.pk:
+            return '-'
+        return f'KSh {obj.compute_revenue():,.2f}' if obj.is_open else f'KSh {(obj.revenue or 0):,.2f}'
+
+    def save_formset(self, request, form, formset, change):
+        instances = formset.save(commit=False)
+        for inst in instances:
+            if isinstance(inst, EarningsAdjustment) and inst.pk is None:
+                inst.created_by = request.user
+            inst.save()
+        formset.save_m2m()
 
 
 @admin.register(ShareholderPayout)

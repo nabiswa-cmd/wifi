@@ -550,13 +550,53 @@ class EarningsPeriod(models.Model):
         first = timezone.make_aware(_dt.datetime(today.year, today.month, 1))
         return cls.objects.create(label=cls.default_label(first), start_at=first)
 
-    def compute_revenue(self, until=None):
+    def compute_mpesa_revenue(self, until=None):
         """Successful M-Pesa revenue inside this period (never failed/pending payments)."""
         end = self.end_at or until
         qs = Payment.objects.filter(status=Payment.Status.SUCCESS, created_at__gte=self.start_at)
         if end is not None:
             qs = qs.filter(created_at__lt=end)
         return qs.aggregate(total=models.Sum('amount'))['total'] or Decimal('0.00')
+
+    def adjustment_total(self):
+        """Sum of the Company's manual +/- corrections for this period (see EarningsAdjustment)."""
+        return self.adjustments.aggregate(total=models.Sum('amount'))['total'] or Decimal('0.00')
+
+    def compute_revenue(self, until=None):
+        """
+        The earnings figure the dashboard shows and profit is split from:
+        successful M-Pesa payments PLUS any manual adjustments entered in
+        the Django admin (EarningsAdjustment). With no adjustments this is
+        exactly the M-Pesa total, as before.
+        """
+        return self.compute_mpesa_revenue(until) + self.adjustment_total()
+
+
+class EarningsAdjustment(models.Model):
+    """
+    A manual increase (+) or reduction (-) to one cycle's displayed M-Pesa
+    earnings. The system still calculates the real total from every
+    successful M-Pesa payment; this only layers a signed correction on top,
+    and every one is kept with who entered it, when, and why, so the
+    real figure can always be recovered. Entered in the Django admin.
+    """
+    period = models.ForeignKey(EarningsPeriod, on_delete=models.CASCADE, related_name='adjustments')
+    amount = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        help_text='Positive to increase this cycle\'s earnings, negative to reduce them (e.g. -500).',
+    )
+    note = models.CharField(max_length=255, help_text='Why this change is being made.')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'billing_earningsadjustment'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.amount:+} - {self.note}'
 
 
 class ShareholderPayout(models.Model):

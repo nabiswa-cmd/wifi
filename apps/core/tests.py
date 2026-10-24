@@ -441,3 +441,97 @@ class CarryOverBalanceTests(TestCase):
         # an admin who isn't a shareholder: no crash, redirected back
         resp = self.admin_client.get(reverse('core:my_transactions'))
         self.assertEqual(resp.status_code, 302)
+
+
+class MpesaEarningsAdjustmentTests(TestCase):
+    """The Company can raise or lower a cycle's displayed M-Pesa earnings from the Django admin."""
+
+    def setUp(self):
+        SystemSettings.objects.update_or_create(pk=1, defaults={
+            'total_capital': Decimal('1000'), 'subscription_cost': Decimal('500'),
+        })
+        self.admin = _make_user('boss', 'SUPER_ADMIN', 'boss@example.com')
+        self.root = User.objects.create_superuser(username='root', password='pw12345!', email='r@example.com')
+        pkg = InternetPackage.objects.create(name='Day', price=100, duration=1, duration_unit='DAYS')
+        cust = Customer.objects.create(full_name='c', phone_number='254712345678')
+        self.period = EarningsPeriod.objects.create(
+            label='October earnings', start_at=timezone.now() - dt.timedelta(days=5))
+        Payment.objects.create(customer=cust, package=pkg, phone_number='254712345678',
+                               amount=1000, status=Payment.Status.SUCCESS)
+        Payment.objects.create(customer=cust, package=pkg, phone_number='254712345678',
+                               amount=5000, status=Payment.Status.FAILED)   # never counts
+
+    def _adjust(self, amount, note='fix', period=None):
+        from apps.billing.models import EarningsAdjustment
+        return EarningsAdjustment.objects.create(period=period or self.period, amount=Decimal(amount), note=note)
+
+    def test_no_adjustment_means_plain_mpesa_total(self):
+        self.assertEqual(self.period.compute_revenue(), Decimal('1000.00'))
+
+    def test_increase_and_reduce(self):
+        self._adjust('500')
+        self.assertEqual(self.period.compute_revenue(), Decimal('1500.00'))
+        self._adjust('-200')
+        self.assertEqual(self.period.compute_revenue(), Decimal('1300.00'))
+        self.assertEqual(self.period.compute_mpesa_revenue(), Decimal('1000.00'))   # real figure untouched
+        self.assertEqual(self.period.adjustment_total(), Decimal('300.00'))
+
+    def test_dashboard_shows_adjusted_figure_and_profit_follows(self):
+        self._adjust('500')
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('core:revenue_dashboard'))
+        self.assertEqual(Decimal(resp.context['company_revenue']), Decimal('1500'))
+        self.assertEqual(resp.context['distributable_profit'], Decimal('1000'))   # 1500 - 500 subscription
+
+    def test_closing_the_cycle_freezes_the_adjusted_revenue(self):
+        self._adjust('-300')
+        self.client.force_login(self.admin)
+        self.client.post(reverse('core:subscribe_new_period'))
+        self.period.refresh_from_db()
+        self.assertEqual(self.period.revenue, Decimal('700.00'))
+
+    def test_new_cycle_does_not_inherit_adjustments(self):
+        self._adjust('500')
+        self.client.force_login(self.admin)
+        self.client.post(reverse('core:subscribe_new_period'))
+        self.assertEqual(EarningsPeriod.current().compute_revenue(), Decimal('0.00'))
+
+    def test_admin_page_shows_calculated_adjustments_and_displayed_total(self):
+        self._adjust('250')
+        self.client.force_login(self.root)
+        resp = self.client.get(reverse('admin:billing_earningsperiod_change', args=[self.period.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'M-Pesa total (calculated)')
+        self.assertContains(resp, 'KSh 1,250.00')
+
+    def test_admin_inline_only_lets_you_add_to_the_open_cycle(self):
+        from django.contrib import admin as dj_admin
+        from django.test import RequestFactory
+        from apps.billing.admin import EarningsAdjustmentInline
+        inline = EarningsAdjustmentInline(EarningsPeriod, dj_admin.site)
+        req = RequestFactory().get('/')
+        req.user = self.root
+        self.assertTrue(inline.has_add_permission(req, self.period))
+        self.assertFalse(inline.has_change_permission(req, self.period))   # saved rows are read-only
+        self.assertFalse(inline.has_delete_permission(req, self.period))
+        self.period.end_at = timezone.now()
+        self.period.save()
+        self.assertFalse(inline.has_add_permission(req, self.period))      # closed cycle is frozen
+
+    def test_admin_save_records_who_entered_it(self):
+        from apps.billing.models import EarningsAdjustment
+        self.client.force_login(self.root)
+        url = reverse('admin:billing_earningsperiod_change', args=[self.period.pk])
+        local = timezone.localtime(self.period.start_at)
+        resp = self.client.post(url, {
+            'label': self.period.label,
+            'start_at_0': local.strftime('%Y-%m-%d'), 'start_at_1': local.strftime('%H:%M:%S'),
+            'adjustments-TOTAL_FORMS': '1', 'adjustments-INITIAL_FORMS': '0',
+            'adjustments-MIN_NUM_FORMS': '0', 'adjustments-MAX_NUM_FORMS': '1000',
+            'adjustments-0-amount': '-150', 'adjustments-0-note': 'refunded customer',
+        })
+        self.assertEqual(resp.status_code, 302, getattr(resp, 'context', None) and resp.context['errors'])
+        adj = EarningsAdjustment.objects.get()
+        self.assertEqual(adj.amount, Decimal('-150.00'))
+        self.assertEqual(adj.created_by, self.root)
+        self.assertEqual(self.period.compute_revenue(), Decimal('850.00'))

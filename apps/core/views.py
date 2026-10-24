@@ -261,7 +261,8 @@ def revenue_dashboard(request):
 
     period_qs = revenue_qs.filter(created_at__gte=period.start_at)
     month_agg = period_qs.aggregate(total=Sum('amount'), count=Count('id'))
-    company_revenue = month_agg['total'] or 0
+    # Real M-Pesa total for the cycle + any manual +/- adjustment from the admin.
+    company_revenue = (month_agg['total'] or 0) + period.adjustment_total()
     month_payment_count = month_agg['count'] or 0
 
     prev_month_revenue = (previous_period.revenue if previous_period else 0) or 0

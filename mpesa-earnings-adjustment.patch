@@ -1,0 +1,300 @@
+From 819793ad9ab7b50a980c17298dab6a6e4ef588af Mon Sep 17 00:00:00 2001
+From: claude <c@x>
+Date: Sat, 24 Oct 2026 08:45:57 +0000
+Subject: [PATCH] Admin: editable +/- adjustment to monthly M-Pesa earnings
+
+---
+ apps/billing/admin.py                         | 53 ++++++++++-
+ .../migrations/0014_earningsadjustment.py     | 29 ++++++
+ apps/billing/models.py                        | 42 ++++++++-
+ apps/core/tests.py                            | 94 +++++++++++++++++++
+ apps/core/views.py                            |  3 +-
+ 5 files changed, 216 insertions(+), 5 deletions(-)
+ create mode 100644 apps/billing/migrations/0014_earningsadjustment.py
+
+diff --git a/apps/billing/admin.py b/apps/billing/admin.py
+index 942ba47..ab84092 100644
+--- a/apps/billing/admin.py
++++ b/apps/billing/admin.py
+@@ -6,7 +6,7 @@ from django.utils.html import format_html
+ 
+ from apps.mikrotik.services import connect_payment_device
+ from .models import (
+-    EarningsPeriod, Payment, ShareIncreaseRequest, Shareholder, ShareholderPayout, Subscription, WithdrawalRequest,
++    EarningsAdjustment, EarningsPeriod, Payment, ShareIncreaseRequest, Shareholder, ShareholderPayout, Subscription, WithdrawalRequest,
+ )
+ 
+ 
+@@ -148,10 +148,57 @@ class WithdrawalRequestAdmin(admin.ModelAdmin):
+     search_fields = ('shareholder__full_name', 'payment_phone', 'payment_account_name')
+     readonly_fields = ('decided_by', 'decided_at')
+ 
++class EarningsAdjustmentInline(admin.TabularInline):
++    """
++    The "increase or reduce" section. Add a row with a signed amount
++    (+500 / -200) and a reason. Saved rows are read-only on purpose: to
++    undo one, add an opposite row, so there is always a clean trail.
++    Only the open cycle can be adjusted; a closed one is already frozen.
++    """
++    model = EarningsAdjustment
++    extra = 1
++    fields = ('amount', 'note', 'created_by', 'created_at')
++    readonly_fields = ('created_by', 'created_at')
++
++    def has_add_permission(self, request, obj=None):
++        return obj is not None and obj.is_open and super().has_add_permission(request, obj)
++
++    def has_change_permission(self, request, obj=None):
++        return False
++
++    def has_delete_permission(self, request, obj=None):
++        return False
++
++
+ @admin.register(EarningsPeriod)
+ class EarningsPeriodAdmin(admin.ModelAdmin):
+-    list_display = ('label', 'start_at', 'end_at', 'revenue', 'distributable_profit', 'paid_out_at')
+-    readonly_fields = ('revenue', 'subscription_cost', 'distributable_profit', 'closed_by', 'paid_out_at', 'paid_out_by')
++    list_display = ('label', 'start_at', 'end_at', 'mpesa_total', 'adjustments', 'displayed_total',
++                    'distributable_profit', 'paid_out_at')
++    readonly_fields = ('mpesa_total', 'adjustments', 'displayed_total', 'revenue', 'subscription_cost',
++                       'distributable_profit', 'closed_by', 'paid_out_at', 'paid_out_by')
++    inlines = [EarningsAdjustmentInline]
++
++    @admin.display(description='M-Pesa total (calculated)')
++    def mpesa_total(self, obj):
++        return f'KSh {obj.compute_mpesa_revenue():,.2f}' if obj.pk else '-'
++
++    @admin.display(description='Manual adjustments')
++    def adjustments(self, obj):
++        return f'{obj.adjustment_total():+,.2f}' if obj.pk else '-'
++
++    @admin.display(description='Earnings shown on dashboard')
++    def displayed_total(self, obj):
++        if not obj.pk:
++            return '-'
++        return f'KSh {obj.compute_revenue():,.2f}' if obj.is_open else f'KSh {(obj.revenue or 0):,.2f}'
++
++    def save_formset(self, request, form, formset, change):
++        instances = formset.save(commit=False)
++        for inst in instances:
++            if isinstance(inst, EarningsAdjustment) and inst.pk is None:
++                inst.created_by = request.user
++            inst.save()
++        formset.save_m2m()
+ 
+ 
+ @admin.register(ShareholderPayout)
+diff --git a/apps/billing/migrations/0014_earningsadjustment.py b/apps/billing/migrations/0014_earningsadjustment.py
+new file mode 100644
+index 0000000..8a6764d
+--- /dev/null
++++ b/apps/billing/migrations/0014_earningsadjustment.py
+@@ -0,0 +1,29 @@
++import django.db.models.deletion
++from django.conf import settings
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ('billing', '0013_fup_monitoring'),
++        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
++    ]
++
++    operations = [
++        migrations.CreateModel(
++            name='EarningsAdjustment',
++            fields=[
++                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
++                ('amount', models.DecimalField(decimal_places=2, help_text="Positive to increase this cycle's earnings, negative to reduce them (e.g. -500).", max_digits=14)),
++                ('note', models.CharField(help_text='Why this change is being made.', max_length=255)),
++                ('created_at', models.DateTimeField(auto_now_add=True)),
++                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
++                ('period', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='adjustments', to='billing.earningsperiod')),
++            ],
++            options={
++                'db_table': 'billing_earningsadjustment',
++                'ordering': ['-created_at'],
++            },
++        ),
++    ]
+diff --git a/apps/billing/models.py b/apps/billing/models.py
+index bc12364..c99df44 100644
+--- a/apps/billing/models.py
++++ b/apps/billing/models.py
+@@ -550,7 +550,7 @@ class EarningsPeriod(models.Model):
+         first = timezone.make_aware(_dt.datetime(today.year, today.month, 1))
+         return cls.objects.create(label=cls.default_label(first), start_at=first)
+ 
+-    def compute_revenue(self, until=None):
++    def compute_mpesa_revenue(self, until=None):
+         """Successful M-Pesa revenue inside this period (never failed/pending payments)."""
+         end = self.end_at or until
+         qs = Payment.objects.filter(status=Payment.Status.SUCCESS, created_at__gte=self.start_at)
+@@ -558,6 +558,46 @@ class EarningsPeriod(models.Model):
+             qs = qs.filter(created_at__lt=end)
+         return qs.aggregate(total=models.Sum('amount'))['total'] or Decimal('0.00')
+ 
++    def adjustment_total(self):
++        """Sum of the Company's manual +/- corrections for this period (see EarningsAdjustment)."""
++        return self.adjustments.aggregate(total=models.Sum('amount'))['total'] or Decimal('0.00')
++
++    def compute_revenue(self, until=None):
++        """
++        The earnings figure the dashboard shows and profit is split from:
++        successful M-Pesa payments PLUS any manual adjustments entered in
++        the Django admin (EarningsAdjustment). With no adjustments this is
++        exactly the M-Pesa total, as before.
++        """
++        return self.compute_mpesa_revenue(until) + self.adjustment_total()
++
++
++class EarningsAdjustment(models.Model):
++    """
++    A manual increase (+) or reduction (-) to one cycle's displayed M-Pesa
++    earnings. The system still calculates the real total from every
++    successful M-Pesa payment; this only layers a signed correction on top,
++    and every one is kept with who entered it, when, and why, so the
++    real figure can always be recovered. Entered in the Django admin.
++    """
++    period = models.ForeignKey(EarningsPeriod, on_delete=models.CASCADE, related_name='adjustments')
++    amount = models.DecimalField(
++        max_digits=14, decimal_places=2,
++        help_text='Positive to increase this cycle\'s earnings, negative to reduce them (e.g. -500).',
++    )
++    note = models.CharField(max_length=255, help_text='Why this change is being made.')
++    created_by = models.ForeignKey(
++        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+'
++    )
++    created_at = models.DateTimeField(auto_now_add=True)
++
++    class Meta:
++        db_table = 'billing_earningsadjustment'
++        ordering = ['-created_at']
++
++    def __str__(self):
++        return f'{self.amount:+} - {self.note}'
++
+ 
+ class ShareholderPayout(models.Model):
+     """
+diff --git a/apps/core/tests.py b/apps/core/tests.py
+index ca49baa..8f9ff51 100644
+--- a/apps/core/tests.py
++++ b/apps/core/tests.py
+@@ -441,3 +441,97 @@ class CarryOverBalanceTests(TestCase):
+         # an admin who isn't a shareholder: no crash, redirected back
+         resp = self.admin_client.get(reverse('core:my_transactions'))
+         self.assertEqual(resp.status_code, 302)
++
++
++class MpesaEarningsAdjustmentTests(TestCase):
++    """The Company can raise or lower a cycle's displayed M-Pesa earnings from the Django admin."""
++
++    def setUp(self):
++        SystemSettings.objects.update_or_create(pk=1, defaults={
++            'total_capital': Decimal('1000'), 'subscription_cost': Decimal('500'),
++        })
++        self.admin = _make_user('boss', 'SUPER_ADMIN', 'boss@example.com')
++        self.root = User.objects.create_superuser(username='root', password='pw12345!', email='r@example.com')
++        pkg = InternetPackage.objects.create(name='Day', price=100, duration=1, duration_unit='DAYS')
++        cust = Customer.objects.create(full_name='c', phone_number='254712345678')
++        self.period = EarningsPeriod.objects.create(
++            label='October earnings', start_at=timezone.now() - dt.timedelta(days=5))
++        Payment.objects.create(customer=cust, package=pkg, phone_number='254712345678',
++                               amount=1000, status=Payment.Status.SUCCESS)
++        Payment.objects.create(customer=cust, package=pkg, phone_number='254712345678',
++                               amount=5000, status=Payment.Status.FAILED)   # never counts
++
++    def _adjust(self, amount, note='fix', period=None):
++        from apps.billing.models import EarningsAdjustment
++        return EarningsAdjustment.objects.create(period=period or self.period, amount=Decimal(amount), note=note)
++
++    def test_no_adjustment_means_plain_mpesa_total(self):
++        self.assertEqual(self.period.compute_revenue(), Decimal('1000.00'))
++
++    def test_increase_and_reduce(self):
++        self._adjust('500')
++        self.assertEqual(self.period.compute_revenue(), Decimal('1500.00'))
++        self._adjust('-200')
++        self.assertEqual(self.period.compute_revenue(), Decimal('1300.00'))
++        self.assertEqual(self.period.compute_mpesa_revenue(), Decimal('1000.00'))   # real figure untouched
++        self.assertEqual(self.period.adjustment_total(), Decimal('300.00'))
++
++    def test_dashboard_shows_adjusted_figure_and_profit_follows(self):
++        self._adjust('500')
++        self.client.force_login(self.admin)
++        resp = self.client.get(reverse('core:revenue_dashboard'))
++        self.assertEqual(Decimal(resp.context['company_revenue']), Decimal('1500'))
++        self.assertEqual(resp.context['distributable_profit'], Decimal('1000'))   # 1500 - 500 subscription
++
++    def test_closing_the_cycle_freezes_the_adjusted_revenue(self):
++        self._adjust('-300')
++        self.client.force_login(self.admin)
++        self.client.post(reverse('core:subscribe_new_period'))
++        self.period.refresh_from_db()
++        self.assertEqual(self.period.revenue, Decimal('700.00'))
++
++    def test_new_cycle_does_not_inherit_adjustments(self):
++        self._adjust('500')
++        self.client.force_login(self.admin)
++        self.client.post(reverse('core:subscribe_new_period'))
++        self.assertEqual(EarningsPeriod.current().compute_revenue(), Decimal('0.00'))
++
++    def test_admin_page_shows_calculated_adjustments_and_displayed_total(self):
++        self._adjust('250')
++        self.client.force_login(self.root)
++        resp = self.client.get(reverse('admin:billing_earningsperiod_change', args=[self.period.pk]))
++        self.assertEqual(resp.status_code, 200)
++        self.assertContains(resp, 'M-Pesa total (calculated)')
++        self.assertContains(resp, 'KSh 1,250.00')
++
++    def test_admin_inline_only_lets_you_add_to_the_open_cycle(self):
++        from django.contrib import admin as dj_admin
++        from django.test import RequestFactory
++        from apps.billing.admin import EarningsAdjustmentInline
++        inline = EarningsAdjustmentInline(EarningsPeriod, dj_admin.site)
++        req = RequestFactory().get('/')
++        req.user = self.root
++        self.assertTrue(inline.has_add_permission(req, self.period))
++        self.assertFalse(inline.has_change_permission(req, self.period))   # saved rows are read-only
++        self.assertFalse(inline.has_delete_permission(req, self.period))
++        self.period.end_at = timezone.now()
++        self.period.save()
++        self.assertFalse(inline.has_add_permission(req, self.period))      # closed cycle is frozen
++
++    def test_admin_save_records_who_entered_it(self):
++        from apps.billing.models import EarningsAdjustment
++        self.client.force_login(self.root)
++        url = reverse('admin:billing_earningsperiod_change', args=[self.period.pk])
++        local = timezone.localtime(self.period.start_at)
++        resp = self.client.post(url, {
++            'label': self.period.label,
++            'start_at_0': local.strftime('%Y-%m-%d'), 'start_at_1': local.strftime('%H:%M:%S'),
++            'adjustments-TOTAL_FORMS': '1', 'adjustments-INITIAL_FORMS': '0',
++            'adjustments-MIN_NUM_FORMS': '0', 'adjustments-MAX_NUM_FORMS': '1000',
++            'adjustments-0-amount': '-150', 'adjustments-0-note': 'refunded customer',
++        })
++        self.assertEqual(resp.status_code, 302, getattr(resp, 'context', None) and resp.context['errors'])
++        adj = EarningsAdjustment.objects.get()
++        self.assertEqual(adj.amount, Decimal('-150.00'))
++        self.assertEqual(adj.created_by, self.root)
++        self.assertEqual(self.period.compute_revenue(), Decimal('850.00'))
+diff --git a/apps/core/views.py b/apps/core/views.py
+index 826a82a..21f9a67 100644
+--- a/apps/core/views.py
++++ b/apps/core/views.py
+@@ -261,7 +261,8 @@ def revenue_dashboard(request):
+ 
+     period_qs = revenue_qs.filter(created_at__gte=period.start_at)
+     month_agg = period_qs.aggregate(total=Sum('amount'), count=Count('id'))
+-    company_revenue = month_agg['total'] or 0
++    # Real M-Pesa total for the cycle + any manual +/- adjustment from the admin.
++    company_revenue = (month_agg['total'] or 0) + period.adjustment_total()
+     month_payment_count = month_agg['count'] or 0
+ 
+     prev_month_revenue = (previous_period.revenue if previous_period else 0) or 0
+-- 
+2.43.0
