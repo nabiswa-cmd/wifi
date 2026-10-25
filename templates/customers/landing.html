@@ -49,23 +49,6 @@
   {% endfor %}
 </div>
 
-<!-- Payment brand marks (referenced with <use>). Kept as a hidden sprite so each
-     logo is defined once and can be reused on the method list and the number step.
-     Swap these for the official brand SVGs if you have them. -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-  <symbol id="logo-mpesa" viewBox="0 0 96 32">
-    <rect x="0" y="3" width="26" height="26" rx="7" fill="#00A04A"/>
-    <rect x="8.2" y="8" width="9.6" height="16" rx="2.2" fill="none" stroke="#fff" stroke-width="1.8"/>
-    <circle cx="13" cy="20.6" r="1.1" fill="#fff"/>
-    <text x="33" y="23" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="-.2" fill="#00A04A">M<tspan fill="#E4262C">-</tspan>PESA</text>
-  </symbol>
-  <symbol id="logo-airtel" viewBox="0 0 96 32">
-    <rect x="0" y="3" width="26" height="26" rx="7" fill="#E40000"/>
-    <path d="M17.6 21.4c-1 .9-2.1 1.3-3.4 1.3-2.5 0-4.2-1.7-4.2-3.9s1.8-3.9 4.2-3.9c1.2 0 2.3.4 3.2 1.2v-1h2.4v7.4c0 .5.2.7.6.7v1.6c-.2.1-.5.1-.7.1-1.4 0-2.1-.6-2.1-1.5zm-2.9-4.8c-1.2 0-2.1.9-2.1 2.2s.9 2.2 2.1 2.2c1.3 0 2.2-.9 2.2-2.2s-.9-2.2-2.2-2.2z" fill="#fff"/>
-    <text x="33" y="23" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="700" letter-spacing="-.4" fill="#E40000">airtel</text>
-  </symbol>
-</svg>
-
 <!-- Checkout modal: everything happens here, no page navigation.
      Step 1  "method"   pick M-Pesa or Airtel Money
      Step 2  "phone"    enter the number that will receive the prompt
@@ -94,15 +77,13 @@
       <p class="bm-heading">Pay with</p>
 
       <button type="button" class="bm-method" data-provider="mpesa">
-        <svg class="bm-logo" viewBox="0 0 96 32" role="img" aria-label="M-Pesa"><use href="#logo-mpesa"/></svg>
+        <img class="bm-logo bm-logo-mpesa" src="{% static 'images/pay/mpesa.png' %}" alt="M-Pesa" width="360" height="133" decoding="async">
         <span class="bm-method-text">Safaricom prompt on your phone</span>
-        <svg class="bm-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
       </button>
 
       <button type="button" class="bm-method" data-provider="airtel">
-        <svg class="bm-logo" viewBox="0 0 96 32" role="img" aria-label="Airtel Money"><use href="#logo-airtel"/></svg>
+        <img class="bm-logo bm-logo-airtel" src="{% static 'images/pay/airtel-money.png' %}" alt="Airtel Money" width="298" height="392" decoding="async">
         <span class="bm-method-text">Airtel Money prompt, paid to our till</span>
-        <svg class="bm-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
       </button>
     </div>
 
@@ -113,8 +94,8 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
           Change method
         </button>
-        <svg class="bm-logo bm-logo-sm" id="modal-logo-mpesa" viewBox="0 0 96 32" role="img" aria-label="M-Pesa" hidden><use href="#logo-mpesa"/></svg>
-        <svg class="bm-logo bm-logo-sm" id="modal-logo-airtel" viewBox="0 0 96 32" role="img" aria-label="Airtel Money" hidden><use href="#logo-airtel"/></svg>
+        <img class="bm-logo bm-logo-sm bm-logo-mpesa" id="modal-logo-mpesa" hidden src="{% static 'images/pay/mpesa.png' %}" alt="M-Pesa" width="360" height="133" decoding="async">
+        <img class="bm-logo bm-logo-sm bm-logo-airtel" id="modal-logo-airtel" hidden src="{% static 'images/pay/airtel-money.png' %}" alt="Airtel Money" width="298" height="392" decoding="async">
       </div>
 
       <label class="bm-label" for="modal-phone-input" id="modal-phone-label">M-Pesa phone number</label>
@@ -474,9 +455,9 @@
 <style id="checkout-modal-css">
 /* =========================================================
    CHECKOUT MODAL
-   Flat, opaque, quiet. One surface, one hairline border, one soft shadow.
-   Glass card (translucent + blur), no gradients, no glow. Brand colour appears only in the
-   payment logos; the pay button uses the site's own primary colour.
+   Frosted deep-blue glass with white text, moderately rounded corners, one
+   hairline border, no gradients, no glow. Fonts: Saira Extra Condensed for
+   the details, the page's Tangerine script for the headings (both embedded in theme.css). Every hover uses --bm-hover.
 
    Every selector starts with #buy-modal-overlay so these rules win over
    the older glass-modal rules in theme.css without editing that file.
@@ -491,104 +472,135 @@
 [data-theme="dark"] #buy-modal-overlay .modal-card,
 #buy-modal-overlay .modal-card.is-connecting,
 [data-theme="dark"] #buy-modal-overlay .modal-card.is-connecting {
+  /* Everything inside reads off these (the loader too), so the whole modal
+     stays light-on-glass from one place. */
+  --color-text: #ffffff;
+  --color-text-muted: rgba(255, 255, 255, .78);
+  --color-primary: #8fd3ff;
+  --status-success: #7be3a8;
+  --status-danger: #ffaca4;
+  --bm-line: rgba(255, 255, 255, .24);
+  --bm-hover: #5eead4;   /* the one colour used for every hover in this modal */
+  --bm-script: 'Tangerine', 'Brush Script MT', cursive;   /* same script as the page heading */
+
   position: relative; isolation: auto; overflow: hidden;
   width: 100%; max-width: 400px; padding: 0;
   text-align: left;
-  border-radius: 14px;
-  /* Frosted glass: translucent tint + blur so the page shows through.
-     One blurred element only, so it stays cheap on budget phones. */
-  background: rgba(255, 255, 255, .34);
-  background: color-mix(in srgb, var(--color-surface) 34%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  box-shadow: 0 20px 48px rgba(0, 0, 0, .22);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3); backdrop-filter: blur(16px) saturate(1.3);
+  font-family: 'Saira Extra Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  font-weight: 500; letter-spacing: .01em;
+  color: var(--color-text);
+  text-shadow: 0 1px 2px rgba(4, 14, 30, .4);
+  border-radius: 16px;
+  /* Frosted glass over a deep-blue tint: the page blurs behind it and the
+     tint keeps white text readable on any background. One blurred element only. */
+  background: rgba(18, 35, 61, .58);
+  background: color-mix(in srgb, #12233d 58%, transparent);
+  border: 1px solid var(--bm-line);
+  box-shadow: 0 24px 56px rgba(0, 0, 0, .32);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4);
   animation: bm-in .16s ease-out;
 }
 #buy-modal-overlay .modal-card::before { content: none; }
 @keyframes bm-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-/* header: title, close, and the order summary */
-.bm-head { padding: 16px 20px 16px; border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent); }
-.bm-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-#buy-modal-overlay .bm-title { margin: 0; font-size: .95rem; font-weight: 650; letter-spacing: -.005em; color: var(--color-text); }
+/* header */
+.bm-head { padding: 18px 22px 16px; border-bottom: 1px solid var(--bm-line); }
+.bm-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+#buy-modal-overlay .bm-title { margin: 0; font-family: var(--bm-script); font-size: 2.1rem; font-weight: 700; line-height: 1; letter-spacing: 0; color: var(--color-text); }
 .bm-close {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; margin: -4px -6px -4px 0; padding: 0;
+  width: 32px; height: 32px; margin: -6px -8px -6px 0; padding: 0;
   border: 0; border-radius: 8px; background: transparent;
-  color: var(--color-text-muted); cursor: pointer;
-  transition: background-color .15s ease, color .15s ease;
+  color: var(--color-text); cursor: pointer;
+  transition: color .15s ease;
 }
-.bm-close:hover { background: color-mix(in srgb, var(--color-surface-alt) 50%, transparent); color: var(--color-text); }
+.bm-close:hover { color: var(--bm-hover); }
 .bm-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
-.bm-summary-name { font-size: 1.05rem; font-weight: 600; letter-spacing: -.01em; color: var(--color-text); }
-.bm-summary-price { font-size: 1.05rem; font-weight: 700; letter-spacing: -.01em; color: var(--color-text); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bm-summary-name { font-family: var(--bm-script); font-size: 2.6rem; font-weight: 700; line-height: 1; color: var(--color-text); }
+.bm-summary-price { font-size: 1.75rem; font-weight: 700; color: var(--color-text); white-space: nowrap; }
 
 /* body */
-.bm-body { padding: 20px; }
-.bm-heading { margin: 0 0 10px; font-size: .82rem; font-weight: 600; color: var(--color-text-muted); }
+.bm-body { padding: 20px 22px 22px; }
+.bm-heading { margin: 0 0 8px; font-family: var(--bm-script); font-size: 1.9rem; font-weight: 700; line-height: 1.1; letter-spacing: 0; color: var(--color-text-muted); }
 
-/* step 1: payment method rows */
+/* step 1: payment method rows. Hover has no border, glow or arrow: the text
+   turns the hover colour and a line rises into place from the bottom edge. */
 .bm-method {
+  position: relative; overflow: hidden;
   display: flex; align-items: center; gap: 14px; width: 100%;
-  margin: 0 0 10px; padding: 14px 14px 14px 16px;
-  text-align: left; font: inherit; color: var(--color-text);
-  background: color-mix(in srgb, var(--color-surface) 22%, transparent); border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); border-radius: 10px;
+  margin: 0 0 10px; padding: 12px 14px;
+  text-align: left; font: inherit; color: var(--color-text); text-shadow: inherit;
+  background: rgba(255, 255, 255, .08);
+  border: 1px solid var(--bm-line); border-radius: 12px;
   cursor: pointer;
-  transition: border-color .15s ease, background-color .15s ease;
+}
+.bm-method::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: var(--bm-hover);
+  transform: translateY(100%); transition: transform .22s ease;
 }
 .bm-method:last-child { margin-bottom: 0; }
-.bm-method:hover { border-color: var(--color-text-muted); background: color-mix(in srgb, var(--color-surface-alt) 55%, transparent); }
-.bm-method:active { background: color-mix(in srgb, var(--color-surface-alt) 65%, transparent); }
+.bm-method:hover::after, .bm-method:focus-visible::after { transform: translateY(0); }
+.bm-method:hover .bm-method-text, .bm-method:focus-visible .bm-method-text { color: var(--bm-hover); }
+.bm-method .bm-method-text { transition: color .2s ease; }
 .bm-method:focus-visible, .bm-back:focus-visible, .bm-close:focus-visible, .bm-pay:focus-visible {
-  outline: 2px solid var(--color-primary); outline-offset: 2px;
+  outline: 2px solid #fff; outline-offset: 2px;
 }
-.bm-logo { display: block; flex: none; width: 84px; height: 28px; }
-.bm-logo-sm { width: 78px; height: 26px; }
-.bm-method-text { flex: 1; font-size: .8rem; line-height: 1.35; color: var(--color-text-muted); }
-.bm-chevron { flex: none; color: var(--color-text-muted); }
+/* logos sit on a white tile so the brand colours stay true on glass */
+.bm-logo {
+  display: block; flex: none; box-sizing: border-box;
+  width: 86px; height: 50px; padding: 7px 9px; object-fit: contain;
+  background: #fff; border-radius: 9px;
+}
+.bm-logo-sm { width: 74px; height: 42px; padding: 6px 8px; }
+.bm-logo[hidden] { display: none; }
+.bm-method-text { flex: 1; font-size: 1.2rem; font-weight: 500; line-height: 1.2; color: var(--color-text); }
 
 /* step 2: number entry */
 .bm-phone-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .bm-back {
-  display: inline-flex; align-items: center; gap: 4px; margin-left: -4px; padding: 4px 6px;
-  font: inherit; font-size: .82rem; font-weight: 600; color: var(--color-text-muted);
-  background: transparent; border: 0; border-radius: 6px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px; margin-left: -6px; padding: 5px 8px;
+  font: inherit; font-size: 1.15rem; font-weight: 500; color: var(--color-text);
+  background: transparent; border: 0; border-radius: 8px; cursor: pointer;
   transition: color .15s ease;
 }
-.bm-back:hover { color: var(--color-text); }
-.bm-label { display: block; margin: 0 0 6px; font-size: .82rem; font-weight: 600; color: var(--color-text); }
+.bm-back:hover { color: var(--bm-hover); }
+.bm-label { display: block; margin: 0 0 6px; font-family: var(--bm-script); font-size: 1.9rem; font-weight: 700; line-height: 1.1; letter-spacing: 0; color: var(--color-text); }
 #buy-modal-overlay .modal-card input {
-  display: block; width: 100%; margin: 0; padding: 12px 14px;
-  font-size: 1.05rem; font-weight: 500; letter-spacing: .02em; font-variant-numeric: tabular-nums;
-  color: var(--color-text);
-  background: color-mix(in srgb, var(--color-bg) 40%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); border-radius: 10px;
+  display: block; width: 100%; margin: 0; padding: 13px 15px;
+  font-family: inherit; font-size: 1.5rem; font-weight: 600; letter-spacing: .06em; text-shadow: none;
+  color: #fff;
+  background: rgba(255, 255, 255, .1);
+  border: 1px solid var(--bm-line); border-radius: 10px;
   -webkit-backdrop-filter: none; backdrop-filter: none;
-  transition: border-color .15s ease, box-shadow .15s ease;
+  transition: border-color .15s ease, background-color .15s ease;
 }
-#buy-modal-overlay .modal-card input::placeholder { color: var(--color-text-muted); opacity: .7; letter-spacing: .02em; font-weight: 400; }
+#buy-modal-overlay .modal-card input::placeholder { color: rgba(255, 255, 255, .6); opacity: 1; letter-spacing: .04em; font-weight: 400; }
 #buy-modal-overlay .modal-card input:focus {
-  outline: none; border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
+  outline: none; border-color: #fff; background: rgba(255, 255, 255, .16); box-shadow: none;
 }
-.bm-error { margin: 8px 0 0; font-size: .8rem; line-height: 1.4; color: var(--status-danger); }
-.bm-hint { margin: 10px 0 0; font-size: .8rem; line-height: 1.5; color: var(--color-text-muted); }
+.bm-error { margin: 8px 0 0; font-size: 1.1rem; line-height: 1.4; color: var(--status-danger); font-weight: 600; }
+.bm-hint { margin: 10px 0 0; font-size: 1.1rem; line-height: 1.5; color: var(--color-text-muted); }
 #buy-modal-overlay .btn.bm-pay {
-  display: block; width: 100%; margin-top: 20px; padding: 13px 18px;
-  font-size: .95rem; font-weight: 650; letter-spacing: .005em;
-  color: var(--color-on-primary); background: var(--color-primary);
+  display: block; width: 100%; margin-top: 20px; padding: 14px 18px;
+  font-family: inherit; font-size: 1.35rem; font-weight: 700; letter-spacing: .08em; text-shadow: none;
+  color: #12233d; background: #fff;
   border: 0; border-radius: 10px; box-shadow: none;
-  transition: filter .15s ease, transform .15s ease;
+  transition: background-color .15s ease;
 }
-#buy-modal-overlay .btn.bm-pay:hover { filter: brightness(1.07); transform: none; }
-#buy-modal-overlay .btn.bm-pay:active { filter: brightness(.95); }
+#buy-modal-overlay .btn.bm-pay:hover { background: var(--bm-hover); transform: none; filter: none; }
+#buy-modal-overlay .btn.bm-pay:active { background: #3fcfba; }
+#buy-modal-overlay .btn.bm-pay:disabled { opacity: .6; cursor: default; background: #fff; }
 
-/* step 3: loader */
+/* step 3: loader (colours come from the variables set on the card; text uses the modal font) */
 .bm-progress { padding: 28px 20px 24px; }
+#buy-modal-overlay .ll-title, #buy-modal-overlay .ll-sub, #buy-modal-overlay .ll-note { font-family: inherit; }
+#buy-modal-overlay .ll-title { font-size: 1.6rem; font-weight: 600; }
+#buy-modal-overlay .ll-sub { font-size: 1.1rem; }
+#buy-modal-overlay .ll-note { font-size: 1rem; }
 
 @media (max-width: 480px) {
   #buy-modal-overlay .modal-card { max-height: calc(100dvh - 24px); overflow-y: auto; }
-  .bm-method-text { font-size: .76rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   #buy-modal-overlay .modal-card { animation: none; }
