@@ -138,14 +138,20 @@
     box-shadow: 0 1px 2px rgba(16, 24, 40, .05);
     color: inherit; text-decoration: none;
   }
-  /* Hover (clickable tiles only): no border or shadow change. A line in the
-     tile's own colour rises into place from the bottom edge. */
-  a.stat-tile::after {
-    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
-    background: var(--tone-c);
-    transform: translateY(100%); transition: transform .22s ease;
+  /* Hover (clickable tiles only): the whole box takes the tile's own colour
+     (28% of it over the card surface), no border or shadow change. At that tint
+     the main figure stays above 8:1 contrast in both themes, but the small grey
+     labels would fall below readable, so they switch to the full text colour and
+     the icon chip turns into a solid surface-coloured badge so the icon stays visible. */
+  a.stat-tile { transition: background-color .18s ease; }
+  a.stat-tile:hover, a.stat-tile:focus-visible {
+    background: color-mix(in srgb, var(--tone-c) 28%, var(--color-surface));
   }
-  a.stat-tile:hover::after, a.stat-tile:focus-visible::after { transform: translateY(0); }
+  a.stat-tile:hover .stat-label, a.stat-tile:focus-visible .stat-label,
+  a.stat-tile:hover .stat-value small, a.stat-tile:focus-visible .stat-value small { color: var(--color-text); }
+  a.stat-tile:hover .stat-icon::before, a.stat-tile:focus-visible .stat-icon::before {
+    background: var(--color-surface); opacity: .92;
+  }
   a.stat-tile:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
   .stat-icon {
     position: relative; flex: 0 0 44px; width: 44px; height: 44px; align-self: center; border-radius: 10px;
