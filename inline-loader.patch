@@ -1,0 +1,317 @@
+diff --git a/templates/customers/landing.html b/templates/customers/landing.html
+index c9248b6..8153560 100644
+--- a/templates/customers/landing.html
++++ b/templates/customers/landing.html
+@@ -135,13 +135,10 @@
+     <form id="reconnect-form">
+       {% csrf_token %}
+       <input type="text" id="reconnect-code-input" name="code" placeholder="e.g. UFH3JT6LKQ or paste the whole SMS" required>
+-      <button type="submit" class="btn" id="reconnect-submit-btn">Reconnect</button>
++      <button type="submit" class="btn inline-action" id="reconnect-submit-btn">Reconnect</button>
+     </form>
+-    <div id="reconnect-status" hidden style="margin-top:12px;display:flex;align-items:center;gap:10px;">
+-      <div class="spinner" id="reconnect-spinner" style="width:20px;height:20px;"></div>
+-      <span id="reconnect-icon" hidden style="font-size:1.3rem;"></span>
+-      <span id="reconnect-status-text" style="font-size:.9rem;"></span>
+-    </div>
++    <!-- The same Wi-Fi loader as the purchase flow, shown right here (no modal). -->
++    <div id="reconnect-loader" class="inline-loader" hidden></div>
+   </div>
+ 
+ 
+@@ -154,10 +151,11 @@
+       {% csrf_token %}
+       <input type="text" id="voucher-code-input" name="voucher_code" placeholder="Voucher code" required>
+       <input type="tel" id="voucher-phone-input" name="voucher_phone" placeholder="0712345678" required>
+-      <button type="submit" class="btn" id="voucher-submit-btn">Connect</button>
++      <button type="submit" class="btn inline-action" id="voucher-submit-btn">Connect</button>
+     </form>
+-    <div id="voucher-status" hidden style="margin-top:12px;display:flex;align-items:center;gap:10px;">
+-      <div class="spinner" id="voucher-spinner" style="width:20px;height:20px;"></div>
++    <!-- Same loader as above: it replaces the old spinner. -->
++    <div id="voucher-loader" class="inline-loader" hidden></div>
++    <div id="voucher-status" hidden style="margin-top:12px;display:flex;align-items:center;justify-content:center;gap:10px;text-align:center;">
+       <span id="voucher-icon" hidden style="font-size:1.3rem;"></span>
+       <span id="voucher-status-text" style="font-size:.9rem;"></span>
+     </div>
+@@ -332,6 +330,11 @@
+    cached or un-collected theme.css.
+    ========================================================= */
+ 
++/* Reconnect / Voucher boxes: button centred, loader shown in place of the old spinner */
++.inline-action { display: block; margin: 16px auto 0; min-width: 190px; text-align: center; }
++.inline-loader { margin: 18px auto 4px; padding-top: 14px; border-top: 1px solid var(--color-border); }
++.inline-loader[hidden] { display: none; }
++
+ /* ---------- loader layout ---------- */
+ .link-loader { display: flex; flex-direction: column; align-items: center; width: 100%; text-align: center; }
+ .ll-scene { width: 100%; margin: 0 auto 12px; }
+@@ -765,7 +768,7 @@
+   function mount(container, options) {
+     if (!container) return null;
+     var opts = options || {};
+-    var COPY = buildCopy(opts.providerName || 'M-Pesa');
++    var COPY = opts.copy || buildCopy(opts.providerName || 'M-Pesa');
+     var advanceAfter   = opts.advanceAfter   == null ? 3500  : opts.advanceAfter;
+     var pinNoteAfter   = opts.pinNoteAfter   == null ? 45000 : opts.pinNoteAfter;
+     var delayNoteAfter = opts.delayNoteAfter == null ? 25000 : opts.delayNoteAfter;
+@@ -920,7 +923,8 @@
+       success:    success,
+       fail:       fail,
+       restart:    restart,
+-      destroy:    destroy
++      destroy:    destroy,
++      note:       showNote
+     };
+   }
+ 
+@@ -1223,56 +1227,86 @@
+   }
+ 
+   // --- Reconnect by M-Pesa code ---
+-  const reconnectForm = document.getElementById('reconnect-form');
+-  const reconnectStatus = document.getElementById('reconnect-status');
+-  const reconnectSpinner = document.getElementById('reconnect-spinner');
+-  const reconnectIcon = document.getElementById('reconnect-icon');
+-  const reconnectStatusText = document.getElementById('reconnect-status-text');
+-  const reconnectSubmitBtn = document.getElementById('reconnect-submit-btn');
+-  let reconnectPollTimer = null;
+-
+-  function setReconnectStatus(mode, text) {
+-    reconnectStatus.hidden = false;
+-    reconnectSpinner.hidden = mode !== 'loading';
+-    reconnectIcon.hidden = mode === 'loading';
+-    if (mode === 'success') {
+-      reconnectIcon.innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--color-primary);"></i>';
+-    } else if (mode === 'error') {
+-      reconnectIcon.innerHTML = '<i class="bi bi-x-circle-fill" style="color:#c0392b;"></i>';
++  // ------------------------------------------------------------------
++  // Reconnect and Voucher boxes. Both use the same Wi-Fi loader as the purchase
++  // flow, mounted right under the button (where the old spinner was) instead of
++  // inside a modal. createInlineFlow() holds the little bit they share.
++  // ------------------------------------------------------------------
++  function createInlineFlow(cfg) {
++    let loader = null, timer = null, session = 0;
++    function end() {
++      session++;
++      clearTimeout(timer);
++      if (loader) { loader.destroy(); loader = null; }
++      cfg.box.hidden = true;
++      cfg.btn.disabled = false;
+     }
+-    reconnectStatusText.textContent = text;
++    return {
++      begin() {
++        end();
++        cfg.btn.disabled = true;
++        cfg.box.hidden = false;
++        loader = NabiswaConnect.mount(cfg.box, {
++          copy: cfg.copy,
++          advanceAfter: 2500,
++          onCancel: end,
++          onRetry: () => { end(); if (cfg.onReset) cfg.onReset(); },
++          onSuccess: redirectToSuccess,
++        });
++        cfg.box.scrollIntoView({ behavior: 'smooth', block: 'center' });
++        return session;
++      },
++      active(id) { return !!loader && id === session; },
++      found()    { if (loader) loader.paid(); },
++      done()     { if (loader) loader.success(); },
++      note(text) { if (loader) loader.note(text); },
++      fail(message, heading) { if (loader) loader.fail(message, heading); cfg.btn.disabled = false; },
++      later(fn, ms) { clearTimeout(timer); timer = setTimeout(fn, ms); },
++    };
+   }
+ 
+-  function pollReconnectStatus(paymentId, startedAt) {
++  // ---- Reconnect (already paid) ----
++  const reconnectForm = document.getElementById('reconnect-form');
++  const reconnectSubmitBtn = document.getElementById('reconnect-submit-btn');
++  const reconnectInput = document.getElementById('reconnect-code-input');
++  const reconnectFlow = createInlineFlow({
++    box: document.getElementById('reconnect-loader'),
++    btn: reconnectSubmitBtn,
++    copy: [
++      { title: 'Checking your payment',      sub: 'Looking up your M-Pesa code, one moment.' },
++      { title: 'Checking your payment',      sub: 'Looking up your M-Pesa code, one moment.' },
++      { title: 'Payment found',              sub: 'We found your payment. We are activating your access.' },
++      { title: 'Setting up your connection', sub: 'Opening your connection to the internet.' },
++      { title: "You're online",              sub: 'Enjoy browsing. Taking you there now.' },
++    ],
++    onReset: () => reconnectInput && reconnectInput.focus({ preventScroll: true }),
++  });
++
++  function pollReconnectStatus(paymentId, startedAt, id) {
++    if (!reconnectFlow.active(id)) return;
+     if (Date.now() - startedAt > MAX_WAIT_MS) {
+-      setReconnectStatus('error', "Taking longer than expected. Your code is already filled in, tap Reconnect again. You won't be charged again.");
+-      reconnectSubmitBtn.disabled = false;
++      reconnectFlow.fail("Your code is already filled in. Tap Try again. You won't be charged again.", 'Taking longer than expected');
+       return;
+     }
+     fetch(`/billing/payment/${paymentId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)
+       .then(res => res.json())
+       .then(data => {
++        if (!reconnectFlow.active(id)) return;
+         if (data.connected) {
+-          setReconnectStatus('success', 'Connected! Taking you there now…');
+-          reconnectSubmitBtn.disabled = false;
+-          redirectToSuccess();
++          reconnectFlow.done();
+         } else {
+-          setReconnectStatus('loading', 'Connecting your device…');
+-          reconnectPollTimer = setTimeout(() => pollReconnectStatus(paymentId, startedAt), POLL_INTERVAL_MS);
++          reconnectFlow.later(() => pollReconnectStatus(paymentId, startedAt, id), POLL_INTERVAL_MS);
+         }
+       })
+       .catch(() => {
+-        reconnectPollTimer = setTimeout(() => pollReconnectStatus(paymentId, startedAt), POLL_INTERVAL_MS);
++        if (reconnectFlow.active(id)) reconnectFlow.later(() => pollReconnectStatus(paymentId, startedAt, id), POLL_INTERVAL_MS);
+       });
+   }
+ 
+   if (reconnectForm) {
+     reconnectForm.addEventListener('submit', async (e) => {
+       e.preventDefault();
+-      if (reconnectPollTimer) clearTimeout(reconnectPollTimer);
+-      reconnectSubmitBtn.disabled = true;
+-      setReconnectStatus('loading', 'Checking your payment…');
+-
++      const id = reconnectFlow.begin();
+       try {
+         const res = await fetch('{% url "billing:reconnect" %}', {
+           method: 'POST',
+@@ -1281,75 +1315,81 @@
+             'X-Requested-With': 'XMLHttpRequest',
+             'Content-Type': 'application/x-www-form-urlencoded',
+           },
+-          body: `code=${encodeURIComponent(document.getElementById('reconnect-code-input').value)}&mac=${encodeURIComponent(HOTSPOT_MAC)}`,
++          body: `code=${encodeURIComponent(reconnectInput.value)}&mac=${encodeURIComponent(HOTSPOT_MAC)}`,
+         });
+         const data = await res.json();
++        if (!reconnectFlow.active(id)) return;
+         if (!res.ok || !data.success) {
+-          setReconnectStatus('error', data.error || 'Could not reconnect. Please try again.');
+-          reconnectSubmitBtn.disabled = false;
++          reconnectFlow.fail(data.error || 'Could not reconnect. Please try again.', 'Could not reconnect');
+           return;
+         }
+-        setReconnectStatus('loading', 'Connecting your device…');
+-        pollReconnectStatus(data.payment_id, Date.now());
++        reconnectFlow.found();
++        pollReconnectStatus(data.payment_id, Date.now(), id);
+       } catch (err) {
+-        setReconnectStatus('error', 'Connection problem. Please tap Reconnect again in a few seconds.');
+-        reconnectSubmitBtn.disabled = false;
++        if (reconnectFlow.active(id)) reconnectFlow.fail('Check your internet connection and try again in a few seconds.', 'Connection problem');
+       }
+     });
+   }
+ 
+-  // Voucher redemption: same loading-spinner-then-poll pattern as the
+-  // M-Pesa reconnect box above.
++  // ---- Voucher ----
+   const voucherForm = document.getElementById('voucher-form');
+   const voucherStatus = document.getElementById('voucher-status');
+-  const voucherSpinner = document.getElementById('voucher-spinner');
+   const voucherIcon = document.getElementById('voucher-icon');
+   const voucherStatusText = document.getElementById('voucher-status-text');
+   const voucherSubmitBtn = document.getElementById('voucher-submit-btn');
+-  let voucherPollTimer = null;
++  const voucherFlow = createInlineFlow({
++    box: document.getElementById('voucher-loader'),
++    btn: voucherSubmitBtn,
++    copy: [
++      { title: 'Checking your voucher',      sub: 'Verifying the code and your phone number.' },
++      { title: 'Checking your voucher',      sub: 'Verifying the code and your phone number.' },
++      { title: 'Voucher accepted',           sub: 'Your voucher is valid. We are activating your access.' },
++      { title: 'Setting up your connection', sub: 'Opening your connection to the internet.' },
++      { title: "You're online",              sub: 'Enjoy browsing. Taking you there now.' },
++    ],
++    onReset: () => document.getElementById('voucher-code-input')?.focus({ preventScroll: true }),
++  });
+ 
++  // Text-only message under the voucher button (used for "voucher filled in" and router warnings).
+   function setVoucherStatus(mode, text) {
+-    voucherStatus.hidden = false;
+-    voucherSpinner.hidden = mode !== 'loading';
+-    voucherIcon.hidden = mode === 'loading';
++    voucherStatus.hidden = !text;
++    voucherIcon.hidden = false;
+     if (mode === 'success') {
+       voucherIcon.innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--color-primary);"></i>';
+     } else if (mode === 'error') {
+       voucherIcon.innerHTML = '<i class="bi bi-x-circle-fill" style="color:#c0392b;"></i>';
++    } else {
++      voucherIcon.innerHTML = '<i class="bi bi-info-circle-fill" style="color:var(--color-primary);"></i>';
+     }
+-    voucherStatusText.textContent = text;
++    voucherStatusText.textContent = text || '';
+   }
+ 
+-  function pollVoucherStatus(voucherId, startedAt) {
++  function pollVoucherStatus(voucherId, startedAt, id) {
++    if (!voucherFlow.active(id)) return;
+     if (Date.now() - startedAt > MAX_WAIT_MS) {
+-      setVoucherStatus('error', "Taking longer than expected. Try tapping Connect again.");
+-      voucherSubmitBtn.disabled = false;
++      voucherFlow.fail('Tap Try again to connect with your voucher.', 'Taking longer than expected');
+       return;
+     }
+     fetch(`/vouchers/${voucherId}/status/?mac=${encodeURIComponent(HOTSPOT_MAC)}`)
+       .then((res) => res.json())
+       .then((data) => {
++        if (!voucherFlow.active(id)) return;
+         if (data.connected) {
+-          setVoucherStatus('success', 'Connected! Taking you there now…');
+-          voucherSubmitBtn.disabled = false;
+-          redirectToSuccess();
++          voucherFlow.done();
+         } else {
+-          setVoucherStatus('loading', 'Connecting your device…');
+-          voucherPollTimer = setTimeout(() => pollVoucherStatus(voucherId, startedAt), POLL_INTERVAL_MS);
++          voucherFlow.later(() => pollVoucherStatus(voucherId, startedAt, id), POLL_INTERVAL_MS);
+         }
+       })
+       .catch(() => {
+-        voucherPollTimer = setTimeout(() => pollVoucherStatus(voucherId, startedAt), POLL_INTERVAL_MS);
++        if (voucherFlow.active(id)) voucherFlow.later(() => pollVoucherStatus(voucherId, startedAt, id), POLL_INTERVAL_MS);
+       });
+   }
+ 
+   if (voucherForm) {
+     voucherForm.addEventListener('submit', async (e) => {
+       e.preventDefault();
+-      if (voucherPollTimer) clearTimeout(voucherPollTimer);
+-      voucherSubmitBtn.disabled = true;
+-      setVoucherStatus('loading', 'Checking your voucher…');
+-
++      setVoucherStatus('info', '');
++      const id = voucherFlow.begin();
+       try {
+         const res = await fetch('{% url "vouchers:redeem" %}', {
+           method: 'POST',
+@@ -1363,16 +1403,16 @@
+                 `&mac=${encodeURIComponent(HOTSPOT_MAC)}`,
+         });
+         const data = await res.json();
++        if (!voucherFlow.active(id)) return;
+         if (!res.ok || !data.success) {
+-          setVoucherStatus('error', data.error || 'Could not redeem voucher. Please try again.');
+-          voucherSubmitBtn.disabled = false;
++          voucherFlow.fail(data.error || 'Could not redeem voucher. Please try again.', 'Voucher not accepted');
+           return;
+         }
+-        setVoucherStatus('loading', data.warning || 'Connecting your device…');
+-        pollVoucherStatus(data.voucher_id, Date.now());
++        voucherFlow.found();
++        if (data.warning) setVoucherStatus('info', data.warning);
++        pollVoucherStatus(data.voucher_id, Date.now(), id);
+       } catch (err) {
+-        setVoucherStatus('error', 'Something went wrong. Please try again.');
+-        voucherSubmitBtn.disabled = false;
++        if (voucherFlow.active(id)) voucherFlow.fail('Something went wrong. Please try again.', 'Connection problem');
+       }
+     });
+   }
